@@ -1,8 +1,9 @@
+using System;
 using HarmonyLib;
 
 namespace OriCoopBepInEx.Patches
 {
-    [HarmonyPatch("SeinInput", "Update")]
+    [HarmonyPatch(typeof(SeinInput), "Update")]
     internal static class SeinInputPatch
     {
         private static void Postfix()
