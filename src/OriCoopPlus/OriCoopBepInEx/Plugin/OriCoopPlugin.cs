@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
+using OriCoopBepInEx.Client;
 using OriCoopBepInEx.Domain;
 using OriCoopBepInEx.Networking;
 using UnityEngine;
@@ -22,6 +23,7 @@ namespace OriCoopBepInEx.Plugin
         private ConfigEntry<string> _nickname;
         private readonly Dictionary<int, PlayerSnapshot> _remotePlayers = new Dictionary<int, PlayerSnapshot>();
         private readonly Queue<Action> _mainThreadActions = new Queue<Action>();
+        private readonly RemotePlayerManager _remotePlayerManager = new RemotePlayerManager();
         private Vector3Data _localPosition;
         private string _localNick = "Voce";
         private int _pingMs = -1;
@@ -66,6 +68,14 @@ namespace OriCoopBepInEx.Plugin
             lock (_remotePlayers)
             {
                 _remotePlayers[snapshot.PlayerId] = snapshot;
+            }
+
+            lock (_mainThreadActions)
+            {
+                _mainThreadActions.Enqueue(delegate
+                {
+                    _remotePlayerManager.HandleSnapshot(snapshot);
+                });
             }
         }
 
@@ -235,7 +245,11 @@ namespace OriCoopBepInEx.Plugin
         {
             if (_harmony != null)
             {
-                _harmony.UnpatchSelf();
+                _harmony.UnpatchAll(_harmony.Id);
+            }
+            if (_remotePlayerManager != null)
+            {
+                _remotePlayerManager.ClearAll();
             }
             if (_network != null)
             {
