@@ -31,19 +31,20 @@ src\OriCoopPlus\OriCoopBepInEx\bin\Release\OriCoopBepInEx.dll
 src\OriCoopDedicatedServer\OriCoopDedicatedServer\bin\Release\net8.0\OriCoopDedicatedServer.exe
 ```
 
-O scaffolding BepInEx tambem pode ser compilado isoladamente:
+O cliente BepInEx pode ser compilado diretamente com o script PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\src\OriCoopPlus\OriCoopBepInEx\build.ps1
+```
+
+A saída esperada é `src\OriCoopPlus\OriCoopBepInEx\bin\Release\OriCoopBepInEx.dll`.
+
+O script localiza automaticamente a pasta `oriDE_Data\Managed` em `C:\Program Files (x86)\Steam\steamapps\common\Ori DE` ou `D:\SteamLibrary\...` e usa `API\Client\BepInEx.dll` e `API\Client\0Harmony.dll`.
+
+Também é possível compilar via dotnet CLI se o SDK .NET compatível estiver instalado:
 
 ```powershell
 dotnet build .\src\OriCoopPlus\OriCoopBepInEx\OriCoopBepInEx.csproj --configuration Release
-```
-
-A saida esperada e
-`src\OriCoopPlus\OriCoopBepInEx\bin\Release\OriCoopBepInEx.dll`.
-
-Se o PowerShell estiver em outra pasta, use o caminho absoluto do projeto:
-
-```powershell
-dotnet build 'C:\Users\irani\OneDrive\Documentos\GitHub\WW_Launcher\src\OriCoopPlus\OriCoopBepInEx\OriCoopBepInEx.csproj' --configuration Release
 ```
 
 ## Instalacao
@@ -109,8 +110,32 @@ nao copie referencias privadas para a pasta do plugin.
 9. Para encerrar o servidor, digite `stop` no console.
 
 O teste local confirma bind UDP, atribuição de ID, recebimento de snapshots e
-desligamento. A renderização/aplicação visual completa de jogadores remotos
-ainda está **a confirmar** no cliente BepInEx atual.
+desligamento. A renderização/aplicação visual de jogadores remotos foi implementada
+pelos componentes `RemotePlayerManager`, `RemotePlayerPuppet`, `RemoteVisualController`
+e `AnimationRegistry`.
+
+### Protocolo de Validação de Renderização e Animação
+
+1. **Validação de Visibilidade em Frustum Extremo:**
+   - Com o jogador local parado, o jogador remoto afasta-se duas telas horizontais
+     e retorna.
+   - O corpo do clone deve reaparecer imediatamente ao reentrar na viewport.
+   - O log `LogOutput.log` não deve registrar desativações não tratadas e o patch
+     `FrustumCullingBypassPatch` intercepta o culling nativo do `CameraFrustumOptimizer`.
+
+2. **Validação de Cutscenes e Locks de Câmera:**
+   - Disparar uma cutscene (ex.: despertar da Spirit Tree ou alavanca de Ginso Tree)
+     enquanto o jogador remoto se movimenta.
+   - O watchdog `RemoteVisualController.LateUpdate` assegura que `MeshRenderer.enabled`
+     permaneça verdadeiro e o canal alpha não seja zerado.
+
+3. **Validação de Transições de Animação:**
+   - O jogador remoto executa a sequência: Idle -> Corrida -> Pulo -> Pulo Duplo ->
+     Wall Slide -> Bash -> Queda.
+   - Se o clipe exato não estiver presente, a heurística de `AnimationRegistry.InferStateFromMovement`
+     aplica a postura correspondente sem entrar em T-pose nem congelar.
+   - A métrica `[OBSERVABILITY][NET-METRICS]` deve acusar `Dropped: 0` sob condições
+     normais de rede.
 
 ### Teste em rede local (LAN)
 

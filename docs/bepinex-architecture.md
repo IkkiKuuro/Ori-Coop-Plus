@@ -1,64 +1,70 @@
-# Scaffolding BepInEx do Ori Coop
+# Arquitetura do Cliente BepInEx do Ori Coop
 
-O novo cliente fica em
-[`src/OriCoopPlus/OriCoopBepInEx`](../src/OriCoopPlus/OriCoopBepInEx). Ele e um
-plugin BepInEx 5.x para o Ori DE 32-bit e substitui o carregamento legado por
-`BaseUnityPlugin`.
+O cliente fica em [`src/OriCoopPlus/OriCoopBepInEx`](../src/OriCoopPlus/OriCoopBepInEx).
+Ele é um plugin BepInEx 5.x para o Ori DE 32-bit (`net35`) e gerencia tanto a captura
+do jogador local quanto a instanciação, blindagem visual e animação determinística
+dos jogadores remotos.
 
 ## Camadas
 
 ```text
 Plugin/OriCoopPlugin
-    -> Patches/SeinCharacterPatch + Patches/SeinInputPatch
-    -> Domain/PlayerSnapshot + contratos
-    -> Networking/NetworkService (UDP e serializacao)
+    ├── Client/
+    │    ├── RemotePlayerManager (ciclo de vida e roteamento de snapshots)
+    │    ├── RemotePuppetFactory (instanciação limpa a partir de Game.Characters.Sein)
+    │    ├── RemotePlayerPuppet (interpolação de transform e controle visual)
+    │    ├── RemoteVisualController (watchdog LateUpdate contra desativação/culling)
+    │    └── AnimationRegistry (pré-aquecimento e resolução de clipes com fallback)
+    ├── Diagnostics/
+    │    └── ReplicationObservability (telemetria de pacotes e alertas de visibilidade)
+    ├── Domain/ (DTOs de snapshot, posições e vetores sem dependência de engine)
+    ├── Networking/NetworkService (transporte UDP e decodificação do protocolo)
+    └── Patches/
+         ├── SeinCharacterPatch (captura de estado local de Game.Characters.Sein)
+         ├── SeinInputPatch (ponto de interceptação de input)
+         ├── FrustumCullingBypassPatch (bloqueio de culling do CameraFrustumOptimizer)
+         └── AnimationPrewarmPatch (pré-carregamento no CharacterAnimationSystem.Start)
 ```
 
-- **Plugin** registra configuracao, cria as dependencias, inicia a rede e
-  aplica/desfaz Harmony.
-- **Domain** contem DTOs sem referencias a Unity, BepInEx ou ao assembly do
-  jogo.
-- **Networking** implementa o transporte UDP e o protocolo binario inicial.
-  Nenhum tipo Unity e usado nessa camada.
-- **Patches** sao gatilhos finos. `SeinCharacterPatch` captura o estado por
-  meio de um leitor isolado; `SeinInputPatch` esta reservado para a captura de
-  inputs depois que os campos exatos do assembly da versao instalada forem
-  confirmados.
+- **Plugin:** Registra configuração via BepInEx, inicializa a rede, orquestra o
+  `RemotePlayerManager` no thread principal do Unity e aplica/desfaz patches Harmony.
+- **Client (Entidades Remotas e Visibilidade):**
+  - `RemotePlayerManager`: Cria, atualiza e descarta instâncias de `RemotePlayerPuppet`
+    conforme snapshots são recebidos ou jogadores desconectam.
+  - `RemotePuppetFactory`: Clona a hierarquia visual de `Game.Characters.Sein`,
+    removendo estritamente scripts de input (`SeinController`, `SeinInput`), física
+    concorrente (`Rigidbody`), controladores de morte/inventário e otimizadores de
+    frustum nativos. O GameObject resultante é alocado sob `DontDestroyOnLoad`.
+  - `RemoteVisualController`: Atua em `LateUpdate()` como watchdog, garantindo que
+    `MeshRenderer.enabled` e `gameObject.activeSelf` permaneçam ativos e que o canal
+    alpha dos materiais não seja zerado por cutscenes ou gatilhos de cenário.
+  - `AnimationRegistry`: Pré-aquece o catálogo de `TextureAnimationWithTransitions`
+    carregados em memória e resolve animações por nome ou hash FNV-1a, oferecendo
+    heurísticas de fallback de movimento (`Running`, `Falling`, `Jump`, `Idle`) para
+    eliminar poses congeladas ou T-pose.
+- **Diagnostics:**
+  - `ReplicationObservability`: Registra logs estruturados com rate-limiting
+    (debounce) de transições de visibilidade e taxas de pacotes de animação recebidos
+    versus aplicados.
+- **Patches:**
+  - `FrustumCullingBypassPatch`: Intercepta `CameraFrustumOptimizer.ProcessFrustumOptimizable`
+    e ignora o culling caso o componente pertença a uma entidade remota.
+  - `AnimationPrewarmPatch`: Dispara `AnimationRegistry.Prewarm()` assim que o
+    `CharacterAnimationSystem.Start` do jogo é executado.
+  - `SeinCharacterPatch`: Captura `transform.position`, `Speed`, `FaceLeft` e
+    `CurrentAnimation.name` via tipagem direta confirmada em `SeinCharacter`.
 
-O atalho `T` usa os snapshots remotos recebidos, escolhe o jogador remoto mais
-proximo e envia um pedido de teleporte ao servidor. A resposta e aplicada no
-thread principal do Unity ao objeto `Characters/Sein` (com fallback para
-`Sein`). Se o objeto nao existir na cena atual, o cliente registra um aviso.
+## Build e Compatibilidade
 
-O plugin usa `HarmonyPatch` com nomes de tipo/metodo para evitar uma referencia
-de compilacao a `Assembly-CSharp.dll` durante o scaffolding. A existencia e os
-nomes de `SeinCharacter.FixedUpdate`, `SeinInput.Update`, `Velocity`,
-`CurrentAnimation` e `FaceLeft` ainda precisam ser confirmados no runtime da
-versao instalada.
+O projeto compila para `.NET Framework 3.5` e referencia:
+- `UnityEngine.dll` (`oriDE_Data\Managed\UnityEngine.dll`);
+- `Assembly-CSharp.dll` (`oriDE_Data\Managed\Assembly-CSharp.dll`);
+- `0Harmony.dll` (Harmony 2.x em `oriDE_Data\Managed\` ou `API\Client\`);
+- `BepInEx.dll` (BepInEx 5.x em `API\Client\`).
 
-O plugin tambem desenha um HUD proprio no canto superior esquerdo usando
-`OnGUI`, sem depender de um Canvas do jogo. Cada linha mostra nick,
-coordenadas recebidas e ping de ida e volta medido pelo pacote `-7`.
-
-## Contrato inicial
-
-`NetworkService` implementa diretamente o transporte UDP e os pacotes próprios
-`POSITION`, `ANIM` e mensagens `-5`, alem do pedido/resposta
-`TELEPORT_REQUEST` e da variavel `ES`, mantendo compatibilidade inicial com
-`OriCoopShared/PacketType.cs` e `NetworkHandler.cs`. O snapshot de domínio
-continua mais rico que o payload atual; velocidade e inputs ainda não são
-serializados pelo servidor dedicado e estão **a confirmar** para a próxima
-versão do protocolo.
-
-O cliente BepInEx conecta diretamente ao `OriCoopDedicatedServer.exe`. Depois
-de receber seu ID, envia o nick configurado em `[Network] Nickname`; essa
-confirmação ativa o slot no servidor. O fluxo não instancia componentes externos
-de multiplayer.
-
-## Compatibilidade
-
-O projeto aponta para as DLLs locais do jogo e do BepInEx. O target e
-estritamente `net35`, sem `async`, `Task` ou APIs posteriores ao CLR 2.0.
-Altere os `HintPath` do
-[`OriCoopBepInEx.csproj`](../src/OriCoopPlus/OriCoopBepInEx/OriCoopBepInEx.csproj)
-se a instalação do jogo estiver em outro caminho.
+Para compilar sem depender do Visual Studio IDE completo:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\src\OriCoopPlus\OriCoopBepInEx\build.ps1
+```
+O script compila via `csc.exe` do .NET Framework com `/noconfig` e gera
+`src\OriCoopPlus\OriCoopBepInEx\bin\Release\OriCoopBepInEx.dll`.

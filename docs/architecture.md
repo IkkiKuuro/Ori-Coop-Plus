@@ -7,7 +7,10 @@ O Ori Coop Plus e dividido em tres partes:
 ```text
 OriDE.exe
   └─ BepInEx\plugins\OriCoopBepInEx.dll
-       └─ Harmony + NetworkService + patches
+       ├─ RemotePlayerManager + Puppets (renderização e animação do clone)
+       ├─ RemoteVisualController (watchdog de visibilidade e bypass de culling)
+       ├─ AnimationRegistry (catálogo pré-aquecido e fallback de poses)
+       └─ Harmony + NetworkService + Patches
 
 OriCoopDedicatedServer.exe
   └─ OriCoopDedicatedServer.Core.dll
@@ -23,51 +26,51 @@ ou API de multiplayer externa.
 
 | Projeto | Target | Saida | Responsabilidade |
 | --- | --- | --- | --- |
-| `OriCoopBepInEx` | `.NET Framework 3.5` | `OriCoopBepInEx.dll` | scaffolding do plugin BepInEx 5.x |
-| `OriCoopShared` | arquivos compartilhados | incorporado nos dois modulos | enums, configuracao e contrato comum |
+| `OriCoopBepInEx` | `.NET Framework 3.5` | `OriCoopBepInEx.dll` | plugin BepInEx 5.x, replicação e blindagem visual de entidades |
+| `OriCoopShared` | arquivos compartilhados | incorporado nos dois modulos | enums, dados de sincronização, configuração e contrato comum |
 | `OriCoopDedicatedServer.Core` | `.NET 8.0` | `OriCoopDedicatedServer.Core.dll` | transporte UDP, ciclo de vida, API e console |
 | `OriCoopDedicatedServer` | `.NET 8.0` | `OriCoopDedicatedServer.exe` | servidor dedicado independente do WW |
 
-O cliente referencia DLLs instaladas pelo jogo em `oriDE_Data\Managed`. Esses
-caminhos sao configurados atualmente no `.csproj` e precisam ser ajustados
-quando a instalacao do jogo estiver em outro local.
+O cliente referencia DLLs instaladas pelo jogo em `oriDE_Data\Managed` e o `BepInEx.dll`
+de `API\Client\`. A compilação é suportada via script dedicado (`build.ps1`) ou via
+MSBuild com caminhos configuráveis de fallback.
 
-O novo scaffolding BepInEx esta documentado em
-[bepinex-architecture.md](bepinex-architecture.md). Ele e um projeto separado,
-com target estrito `net35`, conectado diretamente ao servidor dedicado próprio.
+A arquitetura do cliente BepInEx está documentada em
+[bepinex-architecture.md](bepinex-architecture.md).
 
 ## Ciclo de inicializacao
 
 ### Cliente
 
 1. O BepInEx encontra `OriCoopBepInEx.dll` em `BepInEx\plugins`.
-2. `OriCoopPlugin.Awake` carrega a configuracao BepInEx.
-3. `NetworkService` abre o UDP próprio e tenta conectar diretamente ao
-   `OriCoopDedicatedServer.exe`.
-4. Harmony aplica os patches do mod.
-5. `SeinCharacterPatch` envia snapshots de posicao e animacao.
+2. `OriCoopPlugin.Awake` carrega a configuração BepInEx e inicia a rede.
+3. Harmony aplica os patches do mod, incluindo o bypass de frustum culling e o
+   pré-aquecimento de animações.
+4. `SeinCharacterPatch` envia snapshots de posição, velocidade e animação a cada
+   FixedUpdate do jogador local.
+5. Quando chegam snapshots de outros jogadores, `RemotePlayerManager` instancia
+   e atualiza os puppets visuais desacoplados, blindados pelo `RemoteVisualController`.
 
 ### Servidor
 
-1. `Program` escolhe maximo de jogadores e porta.
+1. `Program` escolhe máximo de jogadores e porta.
 2. `Server.Start` abre o listener UDP e cria os slots de clientes.
 3. O servidor registra os comandos de infraestrutura.
-4. `OriCoopServerModule.OnEnable` zera as opcoes cooperativas, registra handlers
+4. `OriCoopServerModule.OnEnable` zera as opções cooperativas, registra handlers
    e registra os comandos do Ori.
 
 ## Estado e responsabilidades
 
-- O **servidor** e a autoridade para configuracao, IDs, nomes recebidos,
-  teleporte e distribuicao das mensagens.
-- O **cliente** cria/atualiza representacoes remotas, aplica efeitos no mundo
-  Unity e controla a interface F8.
-- O **codigo compartilhado** define os identificadores que precisam ser iguais
-  nos dois lados.
-- A camada de jogo e acessada por assemblies externos; alteracoes nesses
-  assemblies podem quebrar compilacao ou comportamento em runtime.
+- O **servidor** é a autoridade para configuração, IDs, nomes recebidos,
+  teleporte e distribuição das mensagens.
+- O **cliente** cria e gerencia entidades remotas desacopladas, assegura
+  visibilidade contínua do corpo/mesh, aplica interpolação de posições e estados
+  determinísticos de animação.
+- O **código compartilhado** define os identificadores e estruturas de dados que
+  precisam ser iguais nos dois lados.
 
 ## Compatibilidade
 
-Cliente e servidor devem ser distribuidos como um par. O contrato de
-`PacketType`, a ordem dos campos e os recursos de configuracao precisam
-permanecer compatíveis. Ao mudar um pacote, compile e teste os dois modulos.
+Cliente e servidor devem ser distribuídos como um par. O contrato de
+`PacketType`, a ordem dos campos e os recursos de configuração precisam
+permanecer compatíveis. Ao mudar um pacote, compile e teste os dois módulos.
