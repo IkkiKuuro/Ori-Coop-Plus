@@ -22,6 +22,8 @@ para outros jogos.
 - Consulte [scaffolding BepInEx](bepinex-architecture.md) para a arquitetura do
   novo plugin, suas camadas e os pontos ainda dependentes de confirmação no
   `Assembly-CSharp`.
+- Consulte [arquitetura da UI nativa](native-ui-architecture.md) para engenharia
+  reversa do `PauseScreen`, injeção de botões e gerenciamento de navegação.
 - Consulte [arquitetura](architecture.md) para a separação do
   `OriCoopDedicatedServer` e a ausência de dependência do WW.
 

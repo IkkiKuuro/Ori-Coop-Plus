@@ -15,6 +15,10 @@ Plugin/OriCoopPlugin
     │    ├── RemotePlayerPuppet (interpolação de transform e controle visual)
     │    ├── RemoteVisualController (watchdog LateUpdate contra desativação/culling)
     │    └── AnimationRegistry (pré-aquecimento e resolução de clipes com fallback)
+    ├── UI/
+    │    ├── InventoryScreenPatch (injeção do botão 'Ori Coop' no InventoryManager do save)
+    │    ├── OriCoopMenuScreen (submenu nativo MenuScreen para resgate/debug/status)
+    │    └── NativeUIHelper (clonagem de CleverMenuItem, MessageBox e links espaciais)
     ├── Diagnostics/
     │    └── ReplicationObservability (telemetria de pacotes e alertas de visibilidade)
     ├── Domain/ (DTOs de snapshot, posições e vetores sem dependência de engine)
@@ -28,6 +32,11 @@ Plugin/OriCoopPlugin
 
 - **Plugin:** Registra configuração via BepInEx, inicializa a rede, orquestra o
   `RemotePlayerManager` no thread principal do Unity e aplica/desfaz patches Harmony.
+- **UI (Interface Nativa):**
+  - Gerencia a injeção do botão "Ori Coop" na coluna central do menu de pausa do save (`InventoryManager.NavigationManager`).
+  - Instancia o `OriCoopMenuScreen` clonando elementos visuais nativos e mantendo
+    compatibilidade integral com gamepad (D-Pad e analógico) e teclado, preservando a pausa.
+  - Documentação detalhada em [`docs/native-ui-architecture.md`](native-ui-architecture.md).
 - **Client (Entidades Remotas e Visibilidade):**
   - `RemotePlayerManager`: Cria, atualiza e descarta instâncias de `RemotePlayerPuppet`
     conforme snapshots são recebidos ou jogadores desconectam.
@@ -68,3 +77,26 @@ powershell -ExecutionPolicy Bypass -File .\src\OriCoopPlus\OriCoopBepInEx\build.
 ```
 O script compila via `csc.exe` do .NET Framework com `/noconfig` e gera
 `src\OriCoopPlus\OriCoopBepInEx\bin\Release\OriCoopBepInEx.dll`.
+
+## Configuração do Entrypoint do BepInEx no Unity 5.3.2f1
+
+No Unity 5.3.2f1 (32-bit), o carregamento de assemblies pelo `MonoManager::ReloadAssembly` ocorre
+em estágios sequenciais (`UnityEngine.dll` -> `Assembly-CSharp-firstpass.dll` -> `Assembly-CSharp.dll`).
+Se o BepInEx utilizar seu entrypoint padrão (`UnityEngine.dll` / `Application..cctor`), ele é
+inicializado antes de `Assembly-CSharp.dll` existir no domínio Mono. Ao criar GameObjects ou
+consultar tipos neste estágio, a engine nativa congela a tabela de `MonoScript` vazia, quebrando
+a serialização de componentes (`Read 32 bytes but expected 48 bytes` em `LoadingBootstrap` e
+`UberPoolGroupWarmer`), resultando em tela preta permanente no início do jogo.
+
+A configuração obrigatória em `BepInEx\config\BepInEx.cfg` é:
+
+```ini
+[Preloader.Entrypoint]
+Assembly = Assembly-CSharp.dll
+Type = LoadingBootstrap
+Method = Awake
+```
+
+Desta forma, o BepInEx aguarda a finalização completa do reload de assemblies e só inicializa
+quando o primeiro script de boot do jogo (`LoadingBootstrap.Awake`) for executado.
+

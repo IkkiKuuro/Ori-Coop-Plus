@@ -58,7 +58,12 @@ if (-not (Test-Path $bepInExDll)) {
 
 $harmonyDll = Join-Path $ManagedDir "0Harmony.dll"
 if (-not (Test-Path $harmonyDll)) {
-    $harmonyDll = Join-Path $ApiDir "0Harmony.dll"
+    $gameHarmony = Join-Path (Split-Path -Parent $ManagedDir) "..\BepInEx\core\0Harmony.dll"
+    if (Test-Path $gameHarmony) {
+        $harmonyDll = (Resolve-Path $gameHarmony).Path
+    } else {
+        $harmonyDll = Join-Path $ApiDir "0Harmony.dll"
+    }
 }
 
 $sourceFiles = Get-ChildItem -Path $scriptDir, (Join-Path $scriptDir "..\OriCoopShared") -Recurse -Filter "*.cs" | 

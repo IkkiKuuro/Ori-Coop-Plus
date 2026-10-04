@@ -31,6 +31,10 @@
       <HintPath>$(OriGameDir)\oriDE_Data\Managed\UnityEngine.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath Condition="Exists('$(OriGameDir)\oriDE_Data\Managed\UnityEngine.UI.dll')">$(OriGameDir)\oriDE_Data\Managed\UnityEngine.UI.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="Assembly-CSharp">
       <HintPath>$(OriGameDir)\oriDE_Data\Managed\Assembly-CSharp.dll</HintPath>
       <Private>False</Private>

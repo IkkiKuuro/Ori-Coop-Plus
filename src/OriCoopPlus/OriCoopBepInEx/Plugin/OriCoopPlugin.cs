@@ -21,6 +21,7 @@ namespace OriCoopBepInEx.Plugin
         private ConfigEntry<int> _serverPort;
         private ConfigEntry<int> _playerId;
         private ConfigEntry<string> _nickname;
+        private ConfigEntry<bool> _enableLegacyFloatingHud;
         private readonly Dictionary<int, PlayerSnapshot> _remotePlayers = new Dictionary<int, PlayerSnapshot>();
         private readonly Queue<Action> _mainThreadActions = new Queue<Action>();
         private readonly RemotePlayerManager _remotePlayerManager = new RemotePlayerManager();
@@ -31,6 +32,69 @@ namespace OriCoopBepInEx.Plugin
         private GUIStyle _hudText;
         private GUIStyle _hudHeader;
 
+        public int CurrentPing
+        {
+            get { return _pingMs; }
+        }
+
+        public int ConnectedPlayerCount
+        {
+            get
+            {
+                lock (_remotePlayers)
+                {
+                    return _remotePlayers.Count;
+                }
+            }
+        }
+
+        public bool ShowPartnerHp { get; set; }
+        public bool ShowNetworkLogs { get; set; }
+
+        public static void LogInfo(string msg)
+        {
+            if (Instance != null) Instance.Logger.LogInfo(msg);
+        }
+
+        public static void LogWarning(string msg)
+        {
+            if (Instance != null) Instance.Logger.LogWarning(msg);
+        }
+
+        public static void LogError(string msg)
+        {
+            if (Instance != null) Instance.Logger.LogError(msg);
+        }
+
+        public void TeleportToNearestPartner()
+        {
+            int targetId = FindNearestRemotePlayer();
+            if (targetId >= 0 && _network != null)
+            {
+                _network.SendTeleportRequest(targetId);
+                Logger.LogInfo("Pedido de teleporte enviado para o jogador " + targetId + ".");
+            }
+            else
+            {
+                Logger.LogWarning("Nenhum parceiro disponivel para teleporte.");
+            }
+        }
+
+        public void ForceResyncPuppets()
+        {
+            if (_remotePlayerManager != null)
+            {
+                _remotePlayerManager.ClearAll();
+                Logger.LogInfo("Puppets remotos reiniciados. Solicitando reconstrucao visual via novos snapshots.");
+            }
+        }
+
+        public void SetVerboseLogging(bool enabled)
+        {
+            ShowNetworkLogs = enabled;
+            Logger.LogInfo("Logs de rede verbosos: " + (enabled ? "LIGADO" : "DESLIGADO"));
+        }
+
         private void Awake()
         {
             Instance = this;
@@ -38,6 +102,7 @@ namespace OriCoopBepInEx.Plugin
             _serverPort = Config.Bind("Network", "Port", 7777, "UDP server port.");
             _playerId = Config.Bind("Network", "PlayerId", -1, "Local player identifier; keep -1 for server assignment.");
             _nickname = Config.Bind("Network", "Nickname", "Ori_Player", "Name shown to other players.");
+            _enableLegacyFloatingHud = Config.Bind("UI", "EnableLegacyFloatingHud", false, "Habilita o HUD flutuante legado (desativado por padrao em favor da UI nativa no menu de pausa).");
 
             _network = new NetworkService(_serverHost.Value, _serverPort.Value, _playerId.Value, _nickname.Value);
             _network.PlayerSnapshotReceived += OnPlayerSnapshotReceived;
@@ -128,6 +193,11 @@ namespace OriCoopBepInEx.Plugin
 
         private void OnGUI()
         {
+            if (_enableLegacyFloatingHud == null || !_enableLegacyFloatingHud.Value)
+            {
+                return;
+            }
+
             EnsureHudStyles();
 
             float width = 285f;
@@ -245,7 +315,7 @@ namespace OriCoopBepInEx.Plugin
         {
             if (_harmony != null)
             {
-                _harmony.UnpatchAll(_harmony.Id);
+                _harmony.UnpatchSelf();
             }
             if (_remotePlayerManager != null)
             {

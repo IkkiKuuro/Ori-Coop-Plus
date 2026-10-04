@@ -279,10 +279,31 @@ Use `/coop` sem argumentos para consultar o estado atual.
 6. Para um teste LAN, inicie o dedicado, anote `LAN address`, configure esse
    IPv4 em dois clientes e confirme que ambos enviam pacotes ao mesmo servidor.
 
+### Validacao do Menu Nativo "Ori Coop" (Gamepad e Teclado)
+
+1. **Injecao no PauseScreen:**
+   - Com o jogo rodando em save controlavel, pause o jogo (Esc no teclado ou Menu/Start no gamepad).
+   - Confirme a presenca do botao nativo **"Ori Coop"** estilizado de forma identica aos botoes originais.
+   - Pressione repetidas vezes para pausar/despausar e confirme no console/log que o botao nao e duplicado.
+2. **Navegacao por Gamepad:**
+   - Navegue para cima e para baixo usando tanto o **D-Pad** quanto o **Analogico Esquerdo**.
+   - Verifique se a animacao de highlight (brilho/foco) e o som nativo tocam ao passar por "Ori Coop".
+   - Pressione **A** (Xbox) / **Cross** (PlayStation) sobre "Ori Coop"; confirme a transicao para o submenu do mod.
+3. **Submenu e Acoes:**
+   - No submenu, verifique se o foco inicial esta no primeiro item ("Teleportar ate Parceiro").
+   - Teste o acionamento de cada botao (Teleporte, Ressincronizacao de Puppet, Toggles).
+   - Pressione **B** (Xbox) / **Circle** (PlayStation) ou **Esc**; verifique o retorno limpo ao menu de pausa principal com o foco restaurado em "Ori Coop".
+4. **Persistencia de Rede durante a Pausa:**
+   - Mantenha o menu de pausa aberto por mais de 30 segundos com outro jogador conectado; confirme que a conexao nao sofre timeout e o ping continua atualizando.
+
+
 ## Diagnostico rapido
 
 | Sintoma | Verificacoes |
 | --- | --- |
+| Crash no inicio com Access Violation (0xc0000005) em `mono.dll` ao carregar UnityExplorer | **Incompatibilidade do UniverseLib com Unity 5.3.2**: O UniverseLib 1.5.1 requer Unity 5.3.4+ para deserialização de UI e causa falha de segmentação no runtime Mono do Ori DE (5.3.2f1). Desative o UnityExplorer movendo sua pasta para fora de `plugins/`. O mod Ori Coop não depende do UnityExplorer. |
+| Tela preta no inicio do jogo (`Object::FindAnyObjectOfType<MonoBehaviour>`, `The referenced script on this Behaviour is missing!` e erro de layout de serializacao) | **Entrypoint prematuro do BepInEx no Unity 5.3.2f1**: O entrypoint padrao em `UnityEngine.dll` roda antes de `Assembly-CSharp.dll` ser indexado, corrompendo o cache nativo de `MonoScript`. Solucao: configurar em `BepInEx\config\BepInEx.cfg`: `Assembly = Assembly-CSharp.dll`, `Type = LoadingBootstrap`, `Method = Awake`, e restaurar `UnityEngine.dll` original caso tenha sido alterado por loaders legados. |
+| BepInEx nao carrega, `LogOutput.log` nao existe e F7 nao funciona | **Arquitetura (bitness) incorreta**: `oriDE.exe` e um binario 32-bit (x86). Se `winhttp.dll` for 64-bit, o Windows ignora a DLL. Instale a versao 32-bit (`BepInEx_win_x86_5.4.x.zip`). |
 | Erro sobre `UnityEngine` ou `Assembly-CSharp` | Confirme as DLLs do jogo e do BepInEx; o plugin deve estar em `BepInEx\plugins` |
 | F8 nao abre | save controlavel, DLL correta, reinicio do jogo e log de carregamento |
 | Jogador sem nome | cliente/servidor da mesma versao e `/coop names on` |
@@ -291,14 +312,19 @@ Use `/coop` sem argumentos para consultar o estado atual.
 | Servidor cheio | reduza conexoes ou inicie com maximo entre 1 e 10 |
 | Cliente LAN nao conecta | confirme o IPv4 `LAN address`, a porta UDP, o firewall do host e se todos estao na mesma rede |
 | `KeyNotFoundException` com a chave `4` ao conectar | substitua o executável pelo build atual; o servidor deve criar e percorrer exatamente os slots configurados |
+| Submenu "Ori Coop" não responde a clique/gamepad e despausa jogo | **Bug conhecido**: `OriCoopMenuScreen` abre mas os itens clonados não processam raycast/foco de entrada, e ao sair ocorre despausa indevida mantendo elementos de UI abertos. Em investigação. |
+| Impossível conectar ao servidor in-game | **Bug conhecido / Ausência de UI de conexão**: Não há tela no jogo para inserir IP/porta do servidor dedicado. A conexão depende de configuração manual no arquivo `com.ikkikuuro.oricoop.cfg`. |
 
-## Itens ainda a confirmar
+## Itens ainda a confirmar e Bugs Conhecidos
 
+- [Bug] Falta de foco/interatividade no submenu `OriCoopMenuScreen` (cliques e gamepad não são consumidos e a saída despausa o jogo no fundo);
+- [Bug/Pendência] Ausência de interface in-game para descoberta ou conexão direta (IP/Porta) ao `OriCoopDedicatedServer`;
 - comportamento de `AutoConnect` em todas as cenas;
 - persistencia das opcoes do servidor entre reinicios (o codigo atual as
   redefine ao carregar o modulo);
 - matriz de compatibilidade entre versoes do Ori, Unity e assemblies;
-- cobertura real de sincronizacao de inimigos e entidades em partidas longas.
-- descoberta automatica de servidores na LAN (atualmente o IPv4 e configurado manualmente).
+- cobertura real de sincronizacao de inimigos e entidades em partidas longas;
+- descoberta automatica de servidores na LAN (atualmente o IPv4 e configurado manualmente);
 - aplicacao visual completa de todos os jogadores remotos e sincronizacao de
   inimigos/entidades em partidas longas.
+

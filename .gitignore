@@ -1,0 +1,6 @@
+/src/OriCoopDedicatedServer/OriCoopDedicatedServer/bin/Release/net8.0/Logs
+/.claude
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
