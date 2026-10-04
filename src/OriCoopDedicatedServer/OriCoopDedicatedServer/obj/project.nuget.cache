@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "dgSpecHash": "oKNzFEsAgpQ=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\WW_Launcher\\src\\OriCoopDedicatedServer\\OriCoopDedicatedServer\\OriCoopDedicatedServer.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\irani\\.nuget\\packages\\microsoft.netcore.app.ref\\8.0.31\\microsoft.netcore.app.ref.8.0.31.nupkg.sha512",
+    "C:\\Users\\irani\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\8.0.31\\microsoft.windowsdesktop.app.ref.8.0.31.nupkg.sha512",
+    "C:\\Users\\irani\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\8.0.31\\microsoft.aspnetcore.app.ref.8.0.31.nupkg.sha512",
+    "C:\\Users\\irani\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\8.0.31\\microsoft.netcore.app.host.win-x64.8.0.31.nupkg.sha512"
+  ],
+  "logs": []
+}

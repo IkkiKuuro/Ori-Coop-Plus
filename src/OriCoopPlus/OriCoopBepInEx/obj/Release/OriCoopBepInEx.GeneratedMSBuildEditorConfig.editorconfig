@@ -1,0 +1,8 @@
+is_global = true
+build_property.RootNamespace = OriCoopBepInEx
+build_property.ProjectDir = C:\Users\irani\OneDrive\Documentos\GitHub\WW_Launcher\src\OriCoopPlus\OriCoopBepInEx\
+build_property.EnableComHosting = 
+build_property.EnableGeneratedComInterfaceComImportInterop = 
+build_property.CsWinRTUseWindowsUIXamlProjections = false
+build_property.EffectiveAnalysisLevelStyle = 
+build_property.EnableCodeStyleSeverity = 

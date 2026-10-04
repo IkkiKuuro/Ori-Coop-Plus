@@ -1,0 +1,4 @@
+C:\Users\irani\OneDrive\Documentos\GitHub\WW_Launcher\src\OriCoopDedicatedServer\OriCoopDedicatedServer.Core\obj\Release\netstandard2.0\OriCoopDedicatedServer.Core.csproj.AssemblyReference.cache
+C:\Users\irani\OneDrive\Documentos\GitHub\WW_Launcher\src\OriCoopDedicatedServer\OriCoopDedicatedServer.Core\obj\Release\netstandard2.0\OriCoopDedicatedServer.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\irani\OneDrive\Documentos\GitHub\WW_Launcher\src\OriCoopDedicatedServer\OriCoopDedicatedServer.Core\obj\Release\netstandard2.0\OriCoopDedicatedServer.Core.csproj.CoreCompileInputs.cache
+C:\Users\irani\OneDrive\Documentos\GitHub\WW_Launcher\src\OriCoopDedicatedServer\OriCoopDedicatedServer.Core\obj\Release\netstandard2.0\OriCoopDedicatedServer.Core.sourcelink.json

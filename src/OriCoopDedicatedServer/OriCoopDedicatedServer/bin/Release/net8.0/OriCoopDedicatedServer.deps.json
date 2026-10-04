@@ -1,0 +1,39 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "OriCoopDedicatedServer/1.0.0": {
+        "dependencies": {
+          "OriCoopDedicatedServer.Core": "1.0.0"
+        },
+        "runtime": {
+          "OriCoopDedicatedServer.dll": {}
+        }
+      },
+      "OriCoopDedicatedServer.Core/1.0.0": {
+        "runtime": {
+          "OriCoopDedicatedServer.Core.dll": {
+            "assemblyVersion": "0.0.0.0",
+            "fileVersion": "0.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "OriCoopDedicatedServer/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "OriCoopDedicatedServer.Core/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

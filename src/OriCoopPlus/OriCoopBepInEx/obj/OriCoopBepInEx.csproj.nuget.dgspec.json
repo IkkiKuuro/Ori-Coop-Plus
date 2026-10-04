@@ -1,0 +1,60 @@
+{
+  "format": 1,
+  "restore": {
+    "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\WW_Launcher\\src\\OriCoopPlus\\OriCoopBepInEx\\OriCoopBepInEx.csproj": {}
+  },
+  "projects": {
+    "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\WW_Launcher\\src\\OriCoopPlus\\OriCoopBepInEx\\OriCoopBepInEx.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\WW_Launcher\\src\\OriCoopPlus\\OriCoopBepInEx\\OriCoopBepInEx.csproj",
+        "projectName": "OriCoopBepInEx",
+        "projectPath": "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\WW_Launcher\\src\\OriCoopPlus\\OriCoopBepInEx\\OriCoopBepInEx.csproj",
+        "packagesPath": "C:\\Users\\irani\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\WW_Launcher\\src\\OriCoopPlus\\OriCoopBepInEx\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\irani\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net35"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net35": {
+            "framework": "net35",
+            "targetAlias": "net35",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.400"
+      },
+      "frameworks": {
+        "net35": {
+          "framework": "net35",
+          "targetAlias": "net35",
+          "dependencies": {
+            "Microsoft.NETFramework.ReferenceAssemblies": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[1.0.3, )"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.401\\RuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}
