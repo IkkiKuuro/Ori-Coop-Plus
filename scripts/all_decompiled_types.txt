@@ -1,0 +1,131 @@
+﻿=== TYPE: OriCoop.CoopConfig ===
+   Method: Void CopyFrom(OriCoop.CoopConfig)
+   Constructor: Void .ctor()
+   Field: Boolean AllowTeleport
+   Field: Boolean ShareAbilities
+   Field: Boolean ShareStoryOnly
+   Field: Boolean ShareWorldEvents
+   Field: Boolean ShareDoorsAndLevers
+   Field: Boolean ShowNicknames
+   Field: Boolean AllowCustomColors
+=== TYPE: OriCoop.PacketType ===
+   Field: Int32 value__
+   Field: OriCoop.PacketType POSITION
+   Field: OriCoop.PacketType ANIM
+   Field: OriCoop.PacketType ID
+   Field: OriCoop.PacketType DISCONNECT
+   Field: OriCoop.PacketType REQUEST_PLAYERS
+   Field: OriCoop.PacketType COLOR
+   Field: OriCoop.PacketType SKILL
+   Field: OriCoop.PacketType SYNC_ABILITY
+   Field: OriCoop.PacketType SYNC_LEVER
+   Field: OriCoop.PacketType SYNC_DOOR
+   Field: OriCoop.PacketType SYNC_BREAKABLE
+   Field: OriCoop.PacketType SYNC_WORLDEVENT
+   Field: OriCoop.PacketType TELEPORT_REQUEST
+   Field: OriCoop.PacketType CONFIG_SYNC
+   Field: OriCoop.PacketType DUMMY_ACTION
+=== TYPE: OriCoop.CoopSkillType ===
+   Field: Int32 value__
+   Field: OriCoop.CoopSkillType NONE
+   Field: OriCoop.CoopSkillType Spirit
+   Field: OriCoop.CoopSkillType Stomp
+=== TYPE: MP_Client.MPExtensions ===
+   Method: 
+   Method: 
+=== TYPE: MP_Client.UI.MessageBoxButtons ===
+   Field: Int32 value__
+   Field: MP_Client.UI.MessageBoxButtons Ok
+   Field: MP_Client.UI.MessageBoxButtons OkCancel
+   Field: MP_Client.UI.MessageBoxButtons AbortRetryIgnore
+   Field: MP_Client.UI.MessageBoxButtons YesNoCancel
+   Field: MP_Client.UI.MessageBoxButtons YesNo
+   Field: MP_Client.UI.MessageBoxButtons RetryCancel
+=== TYPE: MP_Client.UI.MessageBoxDefaultButton ===
+   Field: Int32 value__
+   Field: MP_Client.UI.MessageBoxDefaultButton Button1
+   Field: MP_Client.UI.MessageBoxDefaultButton Button2
+   Field: MP_Client.UI.MessageBoxDefaultButton Button3
+=== TYPE: MP_Client.UI.MessageBoxIcon ===
+   Field: Int32 value__
+   Field: MP_Client.UI.MessageBoxIcon None
+   Field: MP_Client.UI.MessageBoxIcon Hand
+   Field: MP_Client.UI.MessageBoxIcon Question
+   Field: MP_Client.UI.MessageBoxIcon Exclamation
+   Field: MP_Client.UI.MessageBoxIcon Asterisk
+   Field: MP_Client.UI.MessageBoxIcon Stop
+   Field: MP_Client.UI.MessageBoxIcon Error
+   Field: MP_Client.UI.MessageBoxIcon Warning
+   Field: MP_Client.UI.MessageBoxIcon Information
+=== TYPE: MP_Client.UI.MessageBoxModal ===
+   Field: Int32 value__
+   Field: MP_Client.UI.MessageBoxModal Application
+   Field: MP_Client.UI.MessageBoxModal System
+   Field: MP_Client.UI.MessageBoxModal Task
+=== TYPE: MP_Client.UI.MessageBoxResult ===
+   Field: Int32 value__
+   Field: MP_Client.UI.MessageBoxResult None
+   Field: MP_Client.UI.MessageBoxResult Ok
+   Field: MP_Client.UI.MessageBoxResult Cancel
+   Field: MP_Client.UI.MessageBoxResult Abort
+   Field: MP_Client.UI.MessageBoxResult Retry
+   Field: MP_Client.UI.MessageBoxResult Ignore
+   Field: MP_Client.UI.MessageBoxResult Yes
+   Field: MP_Client.UI.MessageBoxResult No
+=== TYPE: MP_Client.UI.WinMessageBox ===
+   Method: Int32 MessageBoxA(IntPtr, System.String, System.String, UInt32)
+   Method: MP_Client.UI.MessageBoxResult Show(System.String, System.String, MP_Client.UI.MessageBoxButtons, MP_Client.UI.MessageBoxIcon)
+=== TYPE: MP_Client.Sync.WorldSyncManager ===
+   Method: 
+   Method: Void ReceiveLeverSync(Int32, Int32, Int32, Int32, Int32)
+   Method: 
+   Method: Void ReceiveDoorSync(Int32, Int32, Int32, Int32)
+   Method: 
+   Method: Void ReceiveWorldEventSync(Int32, Int32, Int32, Int32, Int32)
+   Constructor: Void .cctor()
+   Field: Boolean IsSyncing
+   Field: System.Collections.Generic.List`1[System.String] _openedDoors
+=== TYPE: MP_Client.Patches.AbilityPatches ===
+   Method: 
+   Constructor: Void .ctor()
+   Field: Boolean IsSyncing
+   NestedType: MP_Client.Patches.AbilityPatches+SetAbilityPatch
+=== TYPE: MP_Client.Patches.OriPatches ===
+   Constructor: Void .ctor()
+   NestedType: MP_Client.Patches.OriPatches+CharacterAnimationSystemPatch
+   NestedType: MP_Client.Patches.OriPatches+SpiritFlameProjectilePatch
+   NestedType: MP_Client.Patches.OriPatches+EntityControllerPatch
+=== TYPE: MP_Client.Patches.WorldPatches ===
+   Constructor: Void .ctor()
+   NestedType: MP_Client.Patches.WorldPatches+LeverLeftPatch
+   NestedType: MP_Client.Patches.WorldPatches+LeverRightPatch
+   NestedType: MP_Client.Patches.WorldPatches+LeverMiddlePatch
+   NestedType: MP_Client.Patches.WorldPatches+DoorOpenedPatch
+   NestedType: MP_Client.Patches.WorldPatches+WorldEventPatch
+=== TYPE: MP_Client.Patches.AbilityPatches+SetAbilityPatch ===
+   Method: 
+   Constructor: Void .ctor()
+=== TYPE: MP_Client.Patches.OriPatches+CharacterAnimationSystemPatch ===
+   Method: 
+   Constructor: Void .ctor()
+=== TYPE: MP_Client.Patches.OriPatches+SpiritFlameProjectilePatch ===
+   Method: 
+   Constructor: Void .ctor()
+=== TYPE: MP_Client.Patches.OriPatches+EntityControllerPatch ===
+   Method: 
+   Constructor: Void .ctor()
+=== TYPE: MP_Client.Patches.WorldPatches+LeverLeftPatch ===
+   Method: 
+   Constructor: Void .ctor()
+=== TYPE: MP_Client.Patches.WorldPatches+LeverRightPatch ===
+   Method: 
+   Constructor: Void .ctor()
+=== TYPE: MP_Client.Patches.WorldPatches+LeverMiddlePatch ===
+   Method: 
+   Constructor: Void .ctor()
+=== TYPE: MP_Client.Patches.WorldPatches+DoorOpenedPatch ===
+   Method: 
+   Constructor: Void .ctor()
+=== TYPE: MP_Client.Patches.WorldPatches+WorldEventPatch ===
+   Method: 
+   Constructor: Void .ctor()

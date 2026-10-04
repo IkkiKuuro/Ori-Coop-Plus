@@ -26,6 +26,9 @@ para outros jogos.
   reversa do `PauseScreen`, injeção de botões e gerenciamento de navegação.
 - Consulte [arquitetura](architecture.md) para a separação do
   `OriCoopDedicatedServer` e a ausência de dependência do WW.
+- Consulte [ferramentas e scripts](../scripts/README.md) para utilitários
+  de engenharia reversa, Cecil, inspeção de assemblies e diagnóstico.
+
 
 ## Escopo e confiabilidade
 

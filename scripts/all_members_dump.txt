@@ -1,0 +1,108 @@
+﻿TYPE: OriCoop.CoopConfig
+  FIELD: Boolean AllowTeleport
+  FIELD: Boolean ShareAbilities
+  FIELD: Boolean ShareStoryOnly
+  FIELD: Boolean ShareWorldEvents
+  FIELD: Boolean ShareDoorsAndLevers
+  FIELD: Boolean ShowNicknames
+  FIELD: Boolean AllowCustomColors
+  METHOD: Void CopyFrom
+TYPE: OriCoop.PacketType
+  FIELD: Int32 value__
+  FIELD: PacketType POSITION
+  FIELD: PacketType ANIM
+  FIELD: PacketType ID
+  FIELD: PacketType DISCONNECT
+  FIELD: PacketType REQUEST_PLAYERS
+  FIELD: PacketType COLOR
+  FIELD: PacketType SKILL
+  FIELD: PacketType SYNC_ABILITY
+  FIELD: PacketType SYNC_LEVER
+  FIELD: PacketType SYNC_DOOR
+  FIELD: PacketType SYNC_BREAKABLE
+  FIELD: PacketType SYNC_WORLDEVENT
+  FIELD: PacketType TELEPORT_REQUEST
+  FIELD: PacketType CONFIG_SYNC
+  FIELD: PacketType DUMMY_ACTION
+TYPE: OriCoop.CoopSkillType
+  FIELD: Int32 value__
+  FIELD: CoopSkillType NONE
+  FIELD: CoopSkillType Spirit
+  FIELD: CoopSkillType Stomp
+TYPE: MP_Client.MPExtensions
+  METHOD:  ReadColor32
+  METHOD:  WriteColor32
+TYPE: MP_Client.UI.MessageBoxButtons
+  FIELD: Int32 value__
+  FIELD: MessageBoxButtons Ok
+  FIELD: MessageBoxButtons OkCancel
+  FIELD: MessageBoxButtons AbortRetryIgnore
+  FIELD: MessageBoxButtons YesNoCancel
+  FIELD: MessageBoxButtons YesNo
+  FIELD: MessageBoxButtons RetryCancel
+TYPE: MP_Client.UI.MessageBoxDefaultButton
+  FIELD: Int32 value__
+  FIELD: MessageBoxDefaultButton Button1
+  FIELD: MessageBoxDefaultButton Button2
+  FIELD: MessageBoxDefaultButton Button3
+TYPE: MP_Client.UI.MessageBoxIcon
+  FIELD: Int32 value__
+  FIELD: MessageBoxIcon None
+  FIELD: MessageBoxIcon Hand
+  FIELD: MessageBoxIcon Question
+  FIELD: MessageBoxIcon Exclamation
+  FIELD: MessageBoxIcon Asterisk
+  FIELD: MessageBoxIcon Stop
+  FIELD: MessageBoxIcon Error
+  FIELD: MessageBoxIcon Warning
+  FIELD: MessageBoxIcon Information
+TYPE: MP_Client.UI.MessageBoxModal
+  FIELD: Int32 value__
+  FIELD: MessageBoxModal Application
+  FIELD: MessageBoxModal System
+  FIELD: MessageBoxModal Task
+TYPE: MP_Client.UI.MessageBoxResult
+  FIELD: Int32 value__
+  FIELD: MessageBoxResult None
+  FIELD: MessageBoxResult Ok
+  FIELD: MessageBoxResult Cancel
+  FIELD: MessageBoxResult Abort
+  FIELD: MessageBoxResult Retry
+  FIELD: MessageBoxResult Ignore
+  FIELD: MessageBoxResult Yes
+  FIELD: MessageBoxResult No
+TYPE: MP_Client.UI.WinMessageBox
+  METHOD: Int32 MessageBoxA
+  METHOD: MessageBoxResult Show
+TYPE: MP_Client.Sync.WorldSyncManager
+  FIELD: Boolean IsSyncing
+  FIELD: List`1 _openedDoors
+  METHOD:  OnLocalLeverPushed
+  METHOD: Void ReceiveLeverSync
+  METHOD:  OnLocalDoorOpened
+  METHOD: Void ReceiveDoorSync
+  METHOD:  OnLocalWorldEventChanged
+  METHOD: Void ReceiveWorldEventSync
+TYPE: MP_Client.Patches.AbilityPatches
+  FIELD: Boolean IsSyncing
+  METHOD:  IsStoryAbility
+TYPE: MP_Client.Patches.OriPatches
+TYPE: MP_Client.Patches.WorldPatches
+TYPE: MP_Client.Patches.AbilityPatches+SetAbilityPatch
+  METHOD:  Postfix
+TYPE: MP_Client.Patches.OriPatches+CharacterAnimationSystemPatch
+  METHOD:  Prefix
+TYPE: MP_Client.Patches.OriPatches+SpiritFlameProjectilePatch
+  METHOD:  Prefix
+TYPE: MP_Client.Patches.OriPatches+EntityControllerPatch
+  METHOD:  Prefix
+TYPE: MP_Client.Patches.WorldPatches+LeverLeftPatch
+  METHOD:  Postfix
+TYPE: MP_Client.Patches.WorldPatches+LeverRightPatch
+  METHOD:  Postfix
+TYPE: MP_Client.Patches.WorldPatches+LeverMiddlePatch
+  METHOD:  Postfix
+TYPE: MP_Client.Patches.WorldPatches+DoorOpenedPatch
+  METHOD:  Postfix
+TYPE: MP_Client.Patches.WorldPatches+WorldEventPatch
+  METHOD:  Postfix

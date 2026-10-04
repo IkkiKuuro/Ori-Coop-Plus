@@ -1,0 +1,290 @@
+﻿--------------------------------------------------------
+METHOD: MP_Client.MPGameManager::FixedUpdate
+--------------------------------------------------------
+  [0001] op_7b MPGameManager::Ori
+  [0007] op_28 Object::op_Equality
+  [000d] op_72 token:0x7e000001
+  [0017] op_28 Object::op_Equality
+  [001e] op_7e Characters::Sein
+  [0024] op_28 Object::op_Equality
+  [002d] op_7e Characters::Sein
+  [0032] op_6f Component::get_gameObject
+  [0037] op_6f GameObject::AddComponent
+  [003c] op_7d MPGameManager::Ori
+  [0042] op_7b MPGameManager::PlayerPrefab
+  [0048] op_28 Object::op_Inequality
+  [0050] op_7b MPGameManager::PlayerPrefab
+  [0055] op_28 Object::DestroyImmediate
+  [005c] op_7d MPGameManager::PlayerPrefab
+  [0062] ldstr ""
+  [0067] op_28 Resources::LoadAll
+  [0076] op_6f Object::get_name
+  [007b] ldstr "seinCharacter"
+  [0080] op_6f String::Contains
+  [0089] op_6f GameObject::SetActive
+  [008f] op_28 Object::Instantiate
+  [0097] op_28 MPGameManager::CleanPrefabComponents
+  [009e] op_7d MPGameManager::PlayerPrefab
+  [00a5] op_6f GameObject::SetActive
+  [00bc] op_7b MPGameManager::PlayerPrefab
+  [00c2] op_28 Object::op_Equality
+  [00c9] op_7e Characters::Sein
+  [00cf] op_28 Object::op_Inequality
+  [00d6] op_7e Characters::Sein
+  [00db] op_6f Component::get_gameObject
+  [00e0] op_28 Object::Instantiate
+  [00ea] op_28 MPGameManager::CleanPrefabComponents
+  [00f2] op_6f GameObject::SetActive
+  [00fa] op_7d MPGameManager::PlayerPrefab
+  [00ff] ldstr "CLIENT"
+  [0104] ldstr "PlayerPrefab criado com sucesso clonando Characters.Sein diretamente!"
+  [0109] op_28 Logger::Info
+  [0112] ldstr "CLIENT"
+  [0117] ldstr "Erro ao clonar Characters.Sein: "
+  [0125] op_6f Object::ToString
+  [012a] op_28 String::Concat
+  [012f] op_28 Logger::Error
+  [0137] op_7b MPGameManager::PlayerPrefab
+  [013d] op_28 Object::op_Inequality
+  [0145] op_7b MPGameManager::PlayerPrefab
+  [014a] op_28 Object::DontDestroyOnLoad
+  [0150] op_7b MPGameManager::Ori
+  [0155] op_6f OriMPPlayer::InitLocalPlayer
+  [015b] op_7b MPGameManager::Ori
+  [0161] op_7b MPGameManager::LocalColor
+  [0166] op_6f OriMPPlayer::SetupOriColor
+  [016d] op_7d MPGameManager::OriLoaded
+  [0173] ldstr "Ori Co-op: Personagem pronto para multijogador!"
+  [017d] op_28 MPGameManager::ShowNotification
+  [0183] op_28 Client::get_isConnected
+  [018e] op_28 MPGameManager::get_IsSyncScene
+  [0199] op_28 MPGameManager::get_LocalPlayerId
+  [01a5] op_7b MPGameManager::Ori
+  [01aa] op_7b OriMPPlayer::Animator
+  [01b0] op_28 Object::op_Inequality
+  [01bb] op_7b MPGameManager::Ori
+  [01c0] op_7b OriMPPlayer::Animator
+  [01c5] op_7b CharacterAnimationSystem::Animator
+  [01cb] op_28 Object::op_Inequality
+  [01d3] op_7b MPGameManager::Ori
+  [01d8] op_7b OriMPPlayer::Animator
+  [01dd] op_7b CharacterAnimationSystem::Animator
+  [01e2] op_6f SpriteAnimatorWithTransitions::get_CurrentAnimation
+  [01e8] op_28 Object::op_Inequality
+  [01f0] op_7b MPGameManager::Ori
+  [01f5] op_7b OriMPPlayer::Animator
+  [01fa] op_7b CharacterAnimationSystem::Animator
+  [01ff] op_6f SpriteAnimatorWithTransitions::get_CurrentAnimation
+  [0204] op_6f Object::get_name
+  [020c] op_7b MPGameManager::LastAnim
+  [0213] op_28 String::op_Inequality
+  [0219] op_28 token:0x7d081102
+  [0222] op_73 Packet::.ctor
+  [022c] op_6f Packet::Write
+  [0235] op_6f Packet::Write
+  [023d] op_28 MPGameManager::Send
+  [0243] op_7b MPGameManager::Ori
+  [0248] op_7b OriMPPlayer::CharacterSpriteMirror
+  [024e] op_28 Object::op_Inequality
+  [0256] op_7b MPGameManager::Ori
+  [025b] op_7b OriMPPlayer::CharacterSpriteMirror
+  [0260] op_6f CharacterSpriteMirror::get_FaceLeft
+  [026a] op_73 Packet::.ctor
+  [0274] op_6f Packet::Write
+  [027c] op_7b MPGameManager::Ori
+  [0281] op_6f Component::get_gameObject
+  [0286] op_6f GameObject::get_transform
+  [028b] op_6f Transform::get_position
+  [0290] op_6f Packet::Write
+  [0299] op_6f Packet::Write
+  [02a1] op_28 MPGameManager::Send
+--------------------------------------------------------
+METHOD: MP_Client.MPGameManager::CleanPrefabComponents
+--------------------------------------------------------
+  [0006] op_28 Type::GetTypeFromHandle
+  [000b] op_6f GameObject::GetComponents
+  [001a] op_6f Object::GetType
+  [001f] op_6f Type::get_FullName
+  [0026] ldstr "UnityEngine"
+  [002b] op_6f String::Contains
+  [0033] ldstr "Sprite"
+  [0038] op_6f String::Contains
+  [0040] ldstr "CharacterAnimationSystem"
+  [0045] op_6f String::Contains
+  [004d] ldstr "CharacterSpriteMirror"
+  [0052] op_6f String::Contains
+  [005a] op_28 Object::DestroyImmediate
+  [0062] ldstr "Rigidbody"
+  [0067] op_6f String::Contains
+  [006f] ldstr "ParticleSystem"
+  [0074] op_6f String::Contains
+  [007c] op_28 Object::DestroyImmediate
+  [0091] op_28 Type::GetTypeFromHandle
+  [0096] op_6f GameObject::GetComponentsInChildren
+  [009f] op_7b token:0x139a0706
+  [00a7] op_6f Object::GetType
+  [00ac] op_6f Type::get_FullName
+  [00b5] ldstr "UnityEngine"
+  [00ba] op_6f String::Contains
+  [00c3] ldstr "Sprite"
+  [00c8] op_6f String::Contains
+  [00d1] ldstr "CharacterAnimationSystem"
+  [00d6] op_6f String::Contains
+  [00df] ldstr "CharacterSpriteMirror"
+  [00e4] op_6f String::Contains
+  [00ed] op_28 Object::DestroyImmediate
+  [00f6] ldstr "Rigidbody"
+  [00fb] op_6f String::Contains
+  [0104] ldstr "ParticleSystem"
+  [0109] op_6f String::Contains
+  [0112] op_28 Object::DestroyImmediate
+--------------------------------------------------------
+METHOD: MP_Client.MPGameManager::SpawnPlayer
+--------------------------------------------------------
+  [0001] op_7b MPGameManager::Players
+  [0007] op_6f Dictionary`2::ContainsKey
+  [000f] op_7b MPGameManager::Players
+  [0015] op_6f Dictionary`2::get_Item
+  [001b] op_28 Object::op_Inequality
+  [0023] op_7b MPGameManager::Players
+  [0029] op_6f Dictionary`2::get_Item
+  [002e] op_6f Component::get_gameObject
+  [0033] op_28 Object::DestroyImmediate
+  [0039] op_7b MPGameManager::Players
+  [003f] op_6f Dictionary`2::Remove
+  [0046] op_7b MPGameManager::PlayerPrefab
+  [004c] op_28 Object::op_Equality
+  [0053] op_7e Characters::Sein
+  [0059] op_28 Object::op_Inequality
+  [0060] op_7e Characters::Sein
+  [0065] op_6f Component::get_gameObject
+  [006a] op_28 Object::Instantiate
+  [0072] op_28 MPGameManager::CleanPrefabComponents
+  [0079] op_6f GameObject::SetActive
+  [0080] op_7d MPGameManager::PlayerPrefab
+  [0086] op_7b MPGameManager::PlayerPrefab
+  [008b] op_28 Object::DontDestroyOnLoad
+  [0090] ldstr "CLIENT"
+  [0095] ldstr "PlayerPrefab criado sob demanda no SpawnPlayer!"
+  [009a] op_28 Logger::Info
+  [00a5] op_7b MPGameManager::PlayerPrefab
+  [00ab] op_28 Object::op_Equality
+  [00b2] ldstr "CLIENT"
+  [00b7] ldstr "PlayerPrefab is null! Cannot spawn player."
+  [00bc] op_28 Logger::Debug
+  [00c3] op_7b MPGameManager::PlayerPrefab
+  [00c8] op_28 Object::Instantiate
+  [00cf] op_6f GameObject::SetActive
+  [00d5] op_6f GameObject::AddComponent
+  [00de] op_6f OriMPPlayer::InitOtherPlayer
+  [00e4] op_7b MPGameManager::Colors
+  [00ea] op_6f Dictionary`2::ContainsKey
+  [00f3] op_7b MPGameManager::Colors
+  [00f9] op_6f Dictionary`2::get_Item
+  [00fe] op_6f OriMPPlayer::SetupOriColor
+  [0103] op_6f GameObject::get_transform
+  [0109] op_6f Transform::set_position
+  [010f] op_7b MPGameManager::Players
+  [0116] op_6f Dictionary`2::Add
+  [011b] ldstr "CLIENT"
+  [0120] ldstr "[+] Jogador conectado spawnado: {0} (ID {1})"
+  [012c] op_28 String::Format
+  [0131] op_28 Logger::Info
+  [0137] ldstr "[+] "
+  [013d] op_7b OriMPPlayer::NickName
+  [0142] ldstr " entrou no jogo!"
+  [0147] op_28 String::Concat
+  [0151] op_28 MPGameManager::ShowNotification
+--------------------------------------------------------
+METHOD: MP_Client.OriMPPlayer::InitOtherPlayer
+--------------------------------------------------------
+  [0002] op_7d OriMPPlayer::Id
+  [0009] op_28 String::IsNullOrEmpty
+  [0013] ldstr "Jogador "
+  [001a] op_28 Int32::ToString
+  [001f] op_28 String::Concat
+  [0024] op_7d OriMPPlayer::NickName
+  [0029] op_7e MPGameManager::Instance
+  [002f] op_28 Object::op_Inequality
+  [0035] op_28 token:0x0000217e
+  [003b] op_7b MPGameManager::Colors
+  [0041] op_6f Dictionary`2::ContainsKey
+  [0049] op_7e MPGameManager::Instance
+  [004e] op_7b MPGameManager::Colors
+  [0054] op_6f Dictionary`2::get_Item
+  [0059] op_28 OriMPPlayer::SetupOriColor
+  [0060] op_28 Component::get_gameObject
+  [0065] op_6f GameObject::GetComponentInChildren
+  [006a] op_7d OriMPPlayer::Animator
+  [0071] op_28 Component::get_gameObject
+  [0076] op_6f GameObject::GetComponentInChildren
+  [007b] op_7d OriMPPlayer::CharacterSpriteMirror
+  [0081] op_28 Component::get_gameObject
+  [0086] op_28 GameObjectExtender::FindComponentInChildren
+  [008e] op_28 Object::op_Inequality
+  [0096] op_6f Component::get_gameObject
+  [009c] op_6f GameObject::SetActive
+  [00a3] op_28 Component::get_gameObject
+  [00a8] op_6f GameObject::AddComponent
+  [00ad] op_7d OriMPPlayer::SeinSpirit
+  [00b4] op_28 Component::get_gameObject
+  [00b9] op_6f GameObject::AddComponent
+  [00be] op_7d OriMPPlayer::SeinStomp
+  [00c5] op_28 Component::get_gameObject
+  [00cb] op_7b OriMPPlayer::NickName
+  [00d0] op_28 FloatingNameTag::Attach
+  [00d5] op_7d OriMPPlayer::NameTag
+--------------------------------------------------------
+METHOD: MP_Client.OriMPPlayer::SetAnimation
+--------------------------------------------------------
+  [0001] op_7b OriMPPlayer::Animator
+  [0007] op_28 Object::op_Inequality
+  [000e] op_7e MPGameManager::Instance
+  [0014] op_28 Object::op_Inequality
+  [001b] op_7e MPGameManager::Instance
+  [0023] op_6f MPGameManager::TryGetAnimation
+  [002b] op_7b OriMPPlayer::Animator
+  [0030] op_7b CharacterAnimationSystem::Animator
+  [0037] op_6f SpriteAnimatorWithTransitions::SetAnimation
+--------------------------------------------------------
+METHOD: MP_Client.OriMPPlayer::FixInvisible
+--------------------------------------------------------
+  [0005] op_7b OriMPPlayer::Colors
+  [000b] op_6f List`1::get_Item
+  [0013] op_28 Object::op_Inequality
+  [0019] op_28 token:0x00c06f07
+  [0024] op_6f Renderer::set_enabled
+  [002a] op_6f Component::get_gameObject
+  [002f] op_6f GameObject::get_activeSelf
+  [0037] op_6f Component::get_gameObject
+  [003d] op_6f GameObject::SetActive
+  [0048] op_7b OriMPPlayer::Colors
+  [004d] op_6f List`1::get_Count
+--------------------------------------------------------
+METHOD: MP_Client.OriMPPlayer::FixedUpdate
+--------------------------------------------------------
+  [0001] op_28 OriMPPlayer::FixInvisible
+  [0007] op_7b OriMPPlayer::LocalOri
+  [0014] op_7b OriMPPlayer::Colors
+  [001a] op_6f List`1::get_Item
+  [0020] op_28 Object::op_Inequality
+  [0028] op_7b OriMPPlayer::Colors
+  [002e] op_6f List`1::get_Item
+  [0033] op_6f Renderer::get_material
+  [0038] op_6f Material::get_color
+  [003e] op_7b OriMPPlayer::LocalColor
+  [0043] op_28 Color::op_Inequality
+  [004b] op_7b OriMPPlayer::Colors
+  [0051] op_6f List`1::get_Item
+  [0056] op_6f Renderer::get_material
+  [005c] op_7b OriMPPlayer::LocalColor
+  [0061] op_6f Material::set_color
+  [006c] op_7b OriMPPlayer::Colors
+  [0071] op_6f List`1::get_Count
+--------------------------------------------------------
+METHOD: MP_Client.Patches.OriPatches+CharacterAnimationSystemPatch::Prefix
+--------------------------------------------------------
+  [0000] op_7e MPGameManager::Instance
+  [0006] op_28 Object::op_Inequality
+  [000d] op_7e MPGameManager::Instance
+  [0013] op_6f MPGameManager::AddAnimation

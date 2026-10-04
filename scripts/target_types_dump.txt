@@ -1,0 +1,79 @@
+﻿==================================================
+TYPE: MP_Client.MPGameManager (Base: UnityEngine.MonoBehaviour)
+==================================================
+  FIELD: OriCoop.CoopConfig Config
+  FIELD: System.Collections.Generic.Dictionary`2[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089],[MP_Client.OriMPPlayer, ORIDEClientModule, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]] Players
+  FIELD: System.Collections.Generic.Dictionary`2[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089],[UnityEngine.Color, UnityEngine, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] Colors
+  FIELD: System.Collections.Generic.Dictionary`2[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089],[TextureAnimationWithTransitions, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] Animations
+  FIELD: MP_Client.OriMPPlayer Ori
+  FIELD: UnityEngine.GameObject PlayerPrefab
+  FIELD: UnityEngine.Color LocalColor
+  FIELD: System.Boolean OriLoaded
+  FIELD: System.String LastAnim
+  FIELD: System.Int32 _lastTeleportIndex
+  FIELD: MP_Client.MPGameManager Instance
+  METHOD: Int32 get_LocalPlayerId()
+  METHOD: Boolean get_IsSyncScene()
+  METHOD: Void Awake()
+  METHOD: Void Start()
+  METHOD: Void TryAutoConnect()
+  METHOD: Void OnConnected()
+  METHOD: Void SendColor()
+  METHOD: Void ApplyLocalColor(Color color)
+  METHOD: Void AddAnimation(TextureAnimationWithTransitions anim)
+  METHOD: Boolean TryGetAnimation(String name, TextureAnimationWithTransitions& anim)
+  METHOD: Void ShowNotification(String message, Single duration)
+  METHOD: Void SendDummyAction(Int32 action, Int32 extra)
+  METHOD: Void Update()
+  METHOD: Void FixedUpdate()
+  METHOD: Void CleanPrefabComponents(GameObject go)
+  METHOD: Boolean HasPlayer(Int32 id)
+  METHOD: Void SpawnPlayer(Int32 id, String username, Vector3 position)
+  METHOD: Void SendSkillUsed(CoopSkillType type)
+  METHOD: Void SendAbilityUnlocked(AbilityType ability)
+  METHOD: Void ReceiveAbilitySync(AbilityType ability)
+  METHOD: Void TeleportToNextFriend()
+  METHOD: Void TeleportToPlayer(Int32 playerId)
+  METHOD: Void TeleportLocalSein(Vector3 targetPosition, String friendName)
+  METHOD: Void Send(Packet packet)
+  METHOD: Void DestroyAllPlayers()
+  METHOD: Void RegisterEntity(EntityController instance, GameObject prefab)
+  METHOD: Void ReceiveCallback(Int32 packetid, Packet packet)
+  METHOD: Void OnDestroy()
+==================================================
+TYPE: MP_Client.OriMPPlayer (Base: UnityEngine.MonoBehaviour)
+==================================================
+  FIELD: CharacterSpriteMirror CharacterSpriteMirror
+  FIELD: System.Boolean LocalOri
+  FIELD: CharacterAnimationSystem Animator
+  FIELD: MP_Client.Data.SeinSpiritMP SeinSpirit
+  FIELD: MP_Client.Data.SeinStompMP SeinStomp
+  FIELD: MP_Client.UI.FloatingNameTag NameTag
+  FIELD: System.String NickName
+  FIELD: System.Collections.Generic.List`1[[UnityEngine.MeshRenderer, UnityEngine, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] Colors
+  FIELD: UnityEngine.Color LocalColor
+  FIELD: System.Int32 Id
+  METHOD: Void InitLocalPlayer()
+  METHOD: Void InitOtherPlayer(Int32 id, String username)
+  METHOD: Void SetNickname(String name)
+  METHOD: Void SetupOriColor(Color color)
+  METHOD: Void SetAnimation(String animName)
+  METHOD: Void UseSkill(CoopSkillType type)
+  METHOD: Void FixInvisible()
+  METHOD: Void FixedUpdate()
+==================================================
+TYPE: MP_Client.Sync.PlayerPos (Base: System.Object)
+==================================================
+  FIELD: System.Int32 PlayerId
+  FIELD: UnityEngine.Vector3 Position
+  FIELD: UnityEngine.Vector3 Scale
+  FIELD: System.String NickName
+  FIELD: System.String animation
+==================================================
+TYPE: MP_Client.Patches.OriPatches (Base: System.Object)
+==================================================
+==================================================
+TYPE: MP_Client.Patches.OriPatches+CharacterAnimationSystemPatch (Base: System.Object)
+==================================================
+  METHOD: Void Prefix(TextureAnimationWithTransitions __instance)
+
