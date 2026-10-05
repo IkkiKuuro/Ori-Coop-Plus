@@ -250,7 +250,7 @@ O jogador se conecta exclusivamente ao executável
 | `/tp <origem> <destino>` | teleporta a origem ate o destino; alias `/teleport` |
 | `/clientcolors` | alterna cores de clientes; aliases `cc`, `clientc`, `ccolors` |
 | `/entitysync` | alterna sincronizacao de entidades; aliases `es`, `sync` |
-| `/dummy` | controla o bot de teste; aliases `bot`, `testbot` |
+| `/dummy` | controla o bot de teste; aliases `bot`, `testbot`; `anim [on\|off\|<estado>]` ativa o modo espelho que performa os 12 estados para validar anims do puppet |
 | `/fakeplayer` | alterna o jogador falso avancado; aliases `fakepl`, `fp` |
 
 Exemplos:

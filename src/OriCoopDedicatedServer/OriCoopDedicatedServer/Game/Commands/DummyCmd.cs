@@ -8,7 +8,7 @@ namespace OriCoopDedicatedServer.Game.Commands
     {
         public string Command => "dummy";
         public string[] Aliases => new string[] { "bot", "testbot" };
-        public string Description => "Control the Coop Test Dummy Bot (/dummy [spawn|despawn|ability|lever|door|status])";
+        public string Description => "Control the Coop Test Dummy Bot (/dummy [spawn|despawn|anim|status|ability|lever|door])";
 
         public bool Execute(List<string> arguments, out string response)
         {
@@ -37,8 +37,37 @@ namespace OriCoopDedicatedServer.Game.Commands
                     return true;
 
                 case "status":
-                    response = $"Dummy Active: {DummyManager.IsActive}, Pos: ({DummyManager.DummyPosition.X:F1}, {DummyManager.DummyPosition.Y:F1}, {DummyManager.DummyPosition.Z:F1})";
+                    response = $"Dummy Active: {DummyManager.IsActive}, Pos: ({DummyManager.DummyPosition.X:F1}, {DummyManager.DummyPosition.Y:F1}, {DummyManager.DummyPosition.Z:F1}), Anim: {DummyManager.CurrentAnimStateName()}";
                     return true;
+
+                case "anim":
+                case "mirror":
+                    if (arguments.Count < 2)
+                    {
+                        DummyManager.SetAnimMode(!DummyManager.AnimCycleEnabled);
+                        response = $"Dummy modo espelho: {(DummyManager.AnimCycleEnabled ? "ATIVADO" : "DESATIVADO")} ({DummyManager.CurrentAnimStateName()})";
+                        return true;
+                    }
+                    string animArg = arguments[1].ToLower();
+                    if (animArg == "on" || animArg == "start" || animArg == "cycle")
+                    {
+                        DummyManager.SetAnimMode(true);
+                        response = "Dummy modo espelho ATIVADO — ciclo de 12 estados (2.5 s cada).";
+                        return true;
+                    }
+                    if (animArg == "off" || animArg == "stop")
+                    {
+                        DummyManager.SetAnimMode(false);
+                        response = "Dummy modo espelho DESATIVADO (parado em Idle).";
+                        return true;
+                    }
+                    if (DummyManager.LockAnimState(arguments[1]))
+                    {
+                        response = $"Dummy anim travada em {DummyManager.CurrentAnimStateName()}.";
+                        return true;
+                    }
+                    response = "Estado desconhecido. Uso: /dummy anim [on|off|<Idle|Running|Jump|DoubleJump|Falling|WallSlide|WallJump|Bash|Glide|ChargeJump|Stomp|Dash>]";
+                    return false;
 
                 case "ability":
                 case "skill":
@@ -69,7 +98,7 @@ namespace OriCoopDedicatedServer.Game.Commands
                     return true;
 
                 default:
-                    response = "Subcomandos disponÃ­veis: spawn, despawn, status, ability <nome>, lever <left/right>, door";
+                    response = "Subcomandos disponíveis: spawn, despawn, anim [on|off|<estado>], status, ability <nome>, lever <left/right>, door";
                     return false;
             }
         }
