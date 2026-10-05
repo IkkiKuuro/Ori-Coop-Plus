@@ -184,5 +184,38 @@ namespace OriCoopBepInEx.UI
                 nav.Navigation.Add(new CleverMenuItemSelectionManager.NavigationData { From = nextItem, To = newItem });
             }
         }
+
+        public static void ShowToast(string message, float duration = 3.5f)
+        {
+            if (string.IsNullOrEmpty(message))
+            {
+                return;
+            }
+
+            try
+            {
+                CustomMessageProvider provider = new CustomMessageProvider(message);
+                Game.UI.Hints.Show(provider, HintLayer.Gameplay, duration);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[OriCoop] ShowToast exception: " + ex.Message);
+            }
+        }
+
+        public sealed class CustomMessageProvider : MessageProvider
+        {
+            public string Text { get; set; }
+
+            public CustomMessageProvider(string text)
+            {
+                Text = text;
+            }
+
+            public override IEnumerable<MessageDescriptor> GetMessages()
+            {
+                yield return new MessageDescriptor(Text);
+            }
+        }
     }
 }

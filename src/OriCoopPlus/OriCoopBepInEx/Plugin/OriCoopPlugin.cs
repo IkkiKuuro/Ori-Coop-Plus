@@ -281,6 +281,21 @@ namespace OriCoopBepInEx.Plugin
         private void OnChatMessageReceived(string sender, string message)
         {
             Logger.LogMessage(sender + ": " + message);
+
+            string toastText = message;
+            if (!string.IsNullOrEmpty(message) && message.StartsWith("<color=green>+") && message.EndsWith("</color>"))
+            {
+                string joinedNick = message.Substring(15, message.Length - 23);
+                toastText = string.Format("[Ori Coop] [+] {0} conectou!", joinedNick);
+            }
+
+            lock (_mainThreadActions)
+            {
+                _mainThreadActions.Enqueue(delegate
+                {
+                    UI.NativeUIHelper.ShowToast(toastText, 3.5f);
+                });
+            }
         }
 
         private void OnEntitySyncChanged(bool enabled)
@@ -300,6 +315,14 @@ namespace OriCoopBepInEx.Plugin
                 _localNick = nick;
             }
             _playerId.Value = id;
+
+            lock (_mainThreadActions)
+            {
+                _mainThreadActions.Enqueue(delegate
+                {
+                    UI.NativeUIHelper.ShowToast(string.Format("[Ori Coop] Conectado com sucesso! (ID: {0})", id), 3.5f);
+                });
+            }
         }
 
         private void OnGUI()
