@@ -313,6 +313,7 @@ namespace OriCoopBepInEx.Networking
                     snapshot.Velocity = new Vector2Data(reader.ReadSingle(), reader.ReadSingle());
                     snapshot.Nick = ReadLegacyString(reader);
                     snapshot.IsPlayerStatePacket = true;
+                    snapshot.Timestamp = DateTime.UtcNow.Ticks;
                     RaiseSnapshot(snapshot);
                 }
                 else if (packetId == (int)PacketType.TELEPORT_REQUEST)

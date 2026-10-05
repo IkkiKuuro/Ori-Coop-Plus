@@ -318,6 +318,12 @@ Use `/coop` sem argumentos para consultar o estado atual.
    - Acesse pelo submenu "Configurar Conexao de Servidor" ou pela tecla de atalho **F6**.
    - Permite alterar IP, Porta e Nickname em tempo real, buscar servidores na LAN (`Buscar LAN`) e conectar/desconectar sem reiniciar o jogo.
 
+### Validacao do rework de anims (build pendente de teste em jogo)
+
+Procedimento em [`docs/anim-test-battery.md`](anim-test-battery.md) (T0–T4).
+Resultado da rodada: **a confirmar** — rodar com 2 clientes e anotar aqui
+data, bytes da DLL e itens pendentes.
+
 ### Registro de Validacao de Build, Instalacao e Servidor
 
 1. **Compilacao:**

@@ -267,6 +267,7 @@ namespace OriCoopBepInEx.Plugin
             _animVerbose = Config.Bind("Diagnostics", "AnimVerbose", false, "Loga transicoes de animacao remota ([ANIM]) no LogOutput.log.");
 
             ServerConnectionDialog.Initialize();
+            gameObject.AddComponent<AnimLogViewer>();
 
             _network = new NetworkService(_serverHost.Value, _serverPort.Value, _playerId.Value, _nickname.Value);
             _network.PlayerSnapshotReceived += OnPlayerSnapshotReceived;
@@ -531,7 +532,7 @@ namespace OriCoopBepInEx.Plugin
 
             float y = 59f;
             GUI.Label(new UnityEngine.Rect(22f, y, width - 20f, rowHeight),
-                FormatPlayerLine(_localNick, _localPosition, _pingMs), _hudText);
+                FormatPlayerLine(_localNick, _localPosition, _pingMs, "local", 0), _hudText);
             y += rowHeight;
 
             lock (_remotePlayers)
@@ -542,8 +543,13 @@ namespace OriCoopBepInEx.Plugin
                     string nick = string.IsNullOrEmpty(player.Nick)
                         ? "Jogador " + entry.Key
                         : player.Nick;
+                    long ageMs = (DateTime.UtcNow.Ticks - player.Timestamp) / TimeSpan.TicksPerMillisecond;
+                    if (ageMs < 0)
+                    {
+                        ageMs = 0;
+                    }
                     GUI.Label(new UnityEngine.Rect(22f, y, width - 20f, rowHeight),
-                        FormatPlayerLine(nick, player.Position, _pingMs), _hudText);
+                        FormatPlayerLine(nick, player.Position, _pingMs, player.Animation.State.ToString(), ageMs), _hudText);
                     y += rowHeight;
                 }
             }
@@ -566,12 +572,12 @@ namespace OriCoopBepInEx.Plugin
             _hudHeader.fontStyle = FontStyle.Bold;
         }
 
-        private static string FormatPlayerLine(string nick, Vector3Data position, int ping)
+        private static string FormatPlayerLine(string nick, Vector3Data position, int ping, string state, long ageMs)
         {
             string pingText = ping < 0 ? "--" : ping + " ms";
             return nick + "  |  " + position.X.ToString("F0") + "," +
                 position.Y.ToString("F0") + "," + position.Z.ToString("F0") +
-                "  |  " + pingText;
+                "  |  " + state + " " + ageMs + "ms  |  " + pingText;
         }
 
         private static Texture2D MakeHudBackground()

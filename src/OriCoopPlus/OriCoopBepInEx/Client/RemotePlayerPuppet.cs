@@ -247,8 +247,10 @@ namespace OriCoopBepInEx.Client
             {
                 return;
             }
-            OriCoopPlugin.LogInfo(string.Format("[ANIM] P{0} recv={1} confirmado={2} motivo={3}",
-                PlayerId, receivedState, _confirmedState, reason));
+            string line = string.Format("[ANIM] P{0} recv={1} confirmado={2} motivo={3}",
+                PlayerId, receivedState, _confirmedState, reason);
+            ReplicationObservability.Record(line);
+            OriCoopPlugin.LogInfo(line);
         }
 
         private void Update()

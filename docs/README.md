@@ -31,6 +31,8 @@ para outros jogos.
   diagnóstico).
 - Consulte [catálogo de animações](anim-catalog.md) para o mapeamento
   nome → estado de movimentação do Ori.
+- Consulte [bateria de testes de anims](anim-test-battery.md) para validar o
+  rework de sincronia (T0–T4, um bloco por mudança).
 - Consulte [ferramentas e scripts](../scripts/README.md) para utilitários
   de engenharia reversa, Cecil, inspeção de assemblies e diagnóstico.
 

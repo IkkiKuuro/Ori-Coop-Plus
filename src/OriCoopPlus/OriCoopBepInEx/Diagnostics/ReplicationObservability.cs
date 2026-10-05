@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 
@@ -10,6 +11,34 @@ namespace OriCoopBepInEx.Diagnostics
         private static int s_packetsReceivedCounter;
         private static int s_packetsAppliedCounter;
         private static int s_packetsDroppedCounter;
+
+        private static readonly Queue<string> s_ring = new Queue<string>();
+        private const int RingCapacity = 200;
+        private static readonly object s_ringSync = new object();
+
+        public static void Record(string line)
+        {
+            if (string.IsNullOrEmpty(line))
+            {
+                return;
+            }
+            lock (s_ringSync)
+            {
+                while (s_ring.Count >= RingCapacity)
+                {
+                    s_ring.Dequeue();
+                }
+                s_ring.Enqueue(line);
+            }
+        }
+
+        public static string[] Snapshot()
+        {
+            lock (s_ringSync)
+            {
+                return s_ring.ToArray();
+            }
+        }
 
         public static void LogVisibilityEvent(int playerId, string reason, bool newState)
         {
