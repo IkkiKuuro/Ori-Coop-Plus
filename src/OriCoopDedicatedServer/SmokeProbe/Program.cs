@@ -406,16 +406,29 @@ internal static class Program
 
     private static bool ExpectReject(UdpClient client, int timeoutMs)
     {
+        // Drena ate o Reject ou o prazo: com a camada Game ligada, o join
+        // gera COLOR + CONFIG_SYNC confiaveis e seus retries podem chegar
+        // antes do Reject (ruido ignorado aqui, como faz o cliente real).
         var remote = new IPEndPoint(IPAddress.Any, 0);
         int saved = client.Client.ReceiveTimeout;
-        client.Client.ReceiveTimeout = timeoutMs;
+        client.Client.ReceiveTimeout = 400;
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         try
         {
-            byte[] reply = client.Receive(ref remote);
-            return TryParseHeader(reply, out int packetId, out _, out _, out _, out _) && packetId == MsgReject;
-        }
-        catch (SocketException)
-        {
+            while (DateTime.UtcNow < deadline)
+            {
+                try
+                {
+                    byte[] reply = client.Receive(ref remote);
+                    if (TryParseHeader(reply, out int packetId, out _, out _, out _, out _) && packetId == MsgReject)
+                    {
+                        return true;
+                    }
+                }
+                catch (SocketException)
+                {
+                }
+            }
             return false;
         }
         finally
