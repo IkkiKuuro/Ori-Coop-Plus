@@ -3,6 +3,7 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using OriCoop;
 using OriCoopBepInEx.Plugin;
 using UnityEngine;
 
@@ -246,18 +247,34 @@ namespace OriCoopBepInEx.UI
                         probe.EnableBroadcast = true;
                         probe.Client.ReceiveTimeout = 600;
 
-                        byte[] probePacket = BitConverter.GetBytes(-1);
+                        // Sonda no envelope versionado (D-02): Hello pre-handshake
+                        // (clientId -1, token 0). O servidor novo derruba a sonda
+                        // legada de 4 bytes sem resposta, entao o scan precisa
+                        // falar o protocolo atual: header 24B + versao + nick.
+                        byte[] probePacket = BuildLanProbeHello();
 
                         // Envia para localhost e broadcast
                         probe.Send(probePacket, probePacket.Length, new IPEndPoint(IPAddress.Loopback, port));
                         probe.Send(probePacket, probePacket.Length, new IPEndPoint(IPAddress.Broadcast, port));
 
-                        IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
-                        byte[] response = probe.Receive(ref remoteEP);
-                        if (response != null && response.Length >= 4)
+                        // Aceita ate 2 respostas (localhost + LAN); a primeira
+                        // Welcome (101) ou Reject (106) valida o servidor novo.
+                        // Reject tambem conta como "encontrado": ha um servidor
+                        // do build atual la, mesmo que cheio/incompativel.
+                        long deadlineTicks = DateTime.UtcNow.Ticks + TimeSpan.TicksPerMillisecond * 1200;
+                        while (foundHost == null && DateTime.UtcNow.Ticks < deadlineTicks)
                         {
-                            int pktId = BitConverter.ToInt32(response, 0);
-                            if (pktId == -1)
+                            IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
+                            byte[] response;
+                            try
+                            {
+                                response = probe.Receive(ref remoteEP);
+                            }
+                            catch (SocketException)
+                            {
+                                break;
+                            }
+                            if (response != null && IsNewCoreServerReply(response))
                             {
                                 foundHost = remoteEP.Address.ToString();
                             }
@@ -283,6 +300,61 @@ namespace OriCoopBepInEx.UI
                     }
                 });
             });
+        }
+
+        private static byte[] BuildLanProbeHello()
+        {
+            using (MemoryStream packet = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(packet))
+            {
+                writer.Write(NetProtocol.Magic);
+                writer.Write(NetProtocol.Version);
+                writer.Write((byte)0);
+                writer.Write((uint)0);
+                writer.Write(NetProtocol.PreHandshakeId);
+                writer.Write((uint)0);
+                writer.Write(NetProtocol.MsgHello);
+                writer.Write((uint)0);
+                writer.Write(NetProtocol.Version);
+                WriteProbeString(writer, "lanprobe");
+                writer.Flush();
+                return packet.ToArray();
+            }
+        }
+
+        private static bool IsNewCoreServerReply(byte[] datagram)
+        {
+            if (datagram == null || datagram.Length < NetProtocol.HeaderSize)
+            {
+                return false;
+            }
+            using (MemoryStream stream = new MemoryStream(datagram))
+            using (BinaryReader reader = new BinaryReader(stream))
+            {
+                ushort magic = reader.ReadUInt16();
+                byte version = reader.ReadByte();
+                reader.ReadByte(); // flags
+                reader.ReadUInt32(); // seq
+                reader.ReadInt32(); // clientId
+                reader.ReadUInt32(); // token
+                int packetId = reader.ReadInt32();
+                if (magic != NetProtocol.Magic || version != NetProtocol.Version)
+                {
+                    return false;
+                }
+                return packetId == NetProtocol.MsgWelcome || packetId == NetProtocol.MsgReject;
+            }
+        }
+
+        private static void WriteProbeString(BinaryWriter writer, string value)
+        {
+            if (value == null)
+            {
+                value = string.Empty;
+            }
+            byte[] bytes = System.Text.Encoding.ASCII.GetBytes(value);
+            writer.Write(bytes.Length);
+            writer.Write(bytes);
         }
 
         private void EnsureStyles()
