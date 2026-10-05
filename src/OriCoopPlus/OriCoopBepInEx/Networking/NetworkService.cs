@@ -41,6 +41,7 @@ namespace OriCoopBepInEx.Networking
         public event Action<int> PingUpdated;
         public event Action<string, int> IdentityAssigned;
         public event Action<int> PlayerDisconnected;
+        public event ConfigSyncHandler ConfigSyncReceived;
 
         public NetworkService(string host, int port, int playerId, string nickname)
         {
@@ -318,6 +319,26 @@ namespace OriCoopBepInEx.Networking
                     {
                         handler(disconnectedId);
                     }
+                }
+                else if (packetId == (int)PacketType.CONFIG_SYNC)
+                {
+                    // BUG #3: o servidor sempre enviou CONFIG_SYNC mas o cliente ignorava,
+                    // entao o jogador nunca sabia que o teleporte estava OFF.
+                    try
+                    {
+                        bool tp = reader.ReadBoolean();
+                        bool ab = reader.ReadBoolean();
+                        bool story = reader.ReadBoolean();
+                        bool world = reader.ReadBoolean();
+                        bool doors = reader.ReadBoolean();
+                        bool names = reader.ReadBoolean();
+                        ConfigSyncHandler handler = ConfigSyncReceived;
+                        if (handler != null)
+                        {
+                            handler(tp, ab, story, world, doors, names);
+                        }
+                    }
+                    catch (EndOfStreamException) { }
                 }
                 else if (packetId == NetworkVariablePacket)
                 {

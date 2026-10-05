@@ -19,6 +19,7 @@ namespace OriCoopBepInEx.Client
         {
             _playerId = playerId;
             StripFrustumOptimizers(gameObject);
+            StripExtraLights(gameObject);
 
             _renderers.Clear();
             _materials.Clear();
@@ -36,10 +37,25 @@ namespace OriCoopBepInEx.Client
                     continue;
                 }
 
-                _renderers.Add(r);
-                if (r.sharedMaterial != null)
+                // BUG #1 (brilho extremo): o puppet e clonado do Sein e antes
+                // compartilhava o MESMO Material (sharedMaterial) com o jogador local.
+                // Qualquer ajuste de alpha/cor no puppet vazava para o Ori local e,
+                // somado a Light duplicada + dois sprites aditivos sobrepostos,
+                // estourava o bloom. Aqui isolamos: cada renderer do puppet ganha
+                // sua propria instancia de Material.
+                try
                 {
-                    _materials.Add(r.sharedMaterial);
+                    if (r.sharedMaterial != null)
+                    {
+                        r.material = new Material(r.sharedMaterial);
+                    }
+                }
+                catch { }
+
+                _renderers.Add(r);
+                if (r.material != null)
+                {
+                    _materials.Add(r.material);
                 }
             }
 
@@ -95,31 +111,80 @@ namespace OriCoopBepInEx.Client
                 }
             }
 
+            // NOTA bug #1: NAO tocar mais em sharedMaterial e NAO forcar alpha=1.
+            // O Ori usa fade/transparencia legitimo (ex.: dash, bash, cutscenes) e o
+            // watchdog antigo corrompia o material compartilhado com o jogador local,
+            // deixando o personagem estourado/branco. Apenas garante que a instancia
+            // propria do puppet nao fique totalmente invisivel.
             for (int i = 0; i < _materials.Count; i++)
             {
                 Material mat = _materials[i];
                 if (mat != null && mat.HasProperty(ColorPropId))
                 {
-                    Color c = mat.color;
-                    if (c.a < 0.95f)
+                    try
                     {
-                        c.a = 1.0f;
-                        mat.color = c;
+                        Color c = mat.color;
+                        if (c.a < 0.01f)
+                        {
+                            c.a = 1.0f;
+                            mat.color = c;
+                        }
                     }
+                    catch { }
+                }
+            }
+        }
+
+        public static void StripExtraLights(GameObject root)
+        {
+            if (root == null)
+            {
+                return;
+            }
+
+            // BUG #1: cada clone do Sein trazia sua Point Light / halo / flare.
+            // Duas lights reais sobrepostas + bloom = personagem branco estourado.
+            // Remove explicitamente, sem depender do passo generico.
+            Light[] lights = root.GetComponentsInChildren<Light>(true);
+            for (int i = 0; i < lights.Length; i++)
+            {
+                if (lights[i] != null)
+                {
+                    DestroyImmediate(lights[i]);
+                }
+            }
+
+            Component[] components = root.GetComponentsInChildren<Component>(true);
+            for (int i = 0; i < components.Length; i++)
+            {
+                Component c = components[i];
+                if (c == null)
+                {
+                    continue;
+                }
+
+                string tn = c.GetType().Name;
+                if (tn == "Halo" || tn == "LensFlare" || tn == "FlareLayer" ||
+                    tn == "Projector" || tn == "TrailRenderer")
+                {
+                    try { DestroyImmediate(c); } catch { }
                 }
             }
         }
 
         public static void StripFrustumOptimizers(GameObject root)
         {
+            // Componentes que desligam renderers quando fora do frustum da camera.
+            // NOTA: CharacterAnimationSystem NAO e culling — e o driver das animacoes
+            // do Sein. Destrui-lo congelava o puppet (sem animacoes). Por isso ele foi
+            // removido desta lista (correcao bug #2).
             string[] cullingComponents = new string[]
             {
                 "CameraFrustumOptimizer",
                 "MeshRendererFrustrumOptimiser",
                 "DisableRendererWhenOutOfFrustrum",
                 "DisableGameObjectWhenOutOfFrustrum",
-                "SuspendWhenOutOfFrustrum",
-                "CharacterAnimationSystem"
+                "SuspendWhenOutOfFrustrum"
             };
 
             Component[] components = root.GetComponentsInChildren<Component>(true);

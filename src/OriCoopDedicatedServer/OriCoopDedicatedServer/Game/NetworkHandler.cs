@@ -93,7 +93,11 @@ namespace OriCoopDedicatedServer.Game
                 {
                     if (!ServerConfig.AllowTeleport)
                     {
-                        ServerSend.SendChatMessage("<color=yellow>Teleporte desativado pelo servidor.</color>");
+                        // BUG #3: antes broadcastava para TODOS; agora responde so ao solicitante.
+                        Packet denied = new Packet(-5);
+                        denied.Write("<color=red>SERVER</color>");
+                        denied.Write("<color=yellow>Teleporte desativado pelo servidor. Use /coop tp on.</color>");
+                        pl.Send(denied);
                         break;
                     }
 
@@ -114,7 +118,10 @@ namespace OriCoopDedicatedServer.Game
                     }
                     else
                     {
-                        ServerSend.SendChatMessage("<color=yellow>Destino de teleporte indisponivel.</color>");
+                        Packet unavailable = new Packet(-5);
+                        unavailable.Write("<color=red>SERVER</color>");
+                        unavailable.Write("<color=yellow>Destino de teleporte indisponivel (sem snapshots recentes).</color>");
+                        pl.Send(unavailable);
                         break;
                     }
 

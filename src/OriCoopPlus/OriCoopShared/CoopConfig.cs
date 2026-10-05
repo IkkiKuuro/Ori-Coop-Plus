@@ -5,7 +5,7 @@ namespace OriCoop
     [Serializable]
     public class CoopConfig
     {
-        public bool AllowTeleport = false;
+        public bool AllowTeleport = true;
         public bool ShareAbilities = false;
         public bool ShareStoryOnly = false;
         public bool ShareWorldEvents = false;

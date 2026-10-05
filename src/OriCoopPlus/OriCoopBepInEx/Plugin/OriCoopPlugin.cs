@@ -29,6 +29,7 @@ namespace OriCoopBepInEx.Plugin
         private Vector3Data _localPosition;
         private string _localNick = "Voce";
         private int _pingMs = -1;
+        private bool _serverAllowTeleport = true;
         private GUIStyle _hudBox;
         private GUIStyle _hudText;
         private GUIStyle _hudHeader;
@@ -130,6 +131,7 @@ namespace OriCoopBepInEx.Plugin
                 _network.PingUpdated += OnPingUpdated;
                 _network.IdentityAssigned += OnIdentityAssigned;
                 _network.PlayerDisconnected += OnPlayerDisconnected;
+                _network.ConfigSyncReceived += OnConfigSyncReceived;
                 _network.Start();
 
                 Logger.LogInfo(string.Format("Conectando ao servidor Ori Coop em {0}:{1} como '{2}'...", host, port, nick));
@@ -153,6 +155,7 @@ namespace OriCoopBepInEx.Plugin
                     _network.PingUpdated -= OnPingUpdated;
                     _network.IdentityAssigned -= OnIdentityAssigned;
                     _network.PlayerDisconnected -= OnPlayerDisconnected;
+                    _network.ConfigSyncReceived -= OnConfigSyncReceived;
                     _network.Dispose();
                 }
                 catch (Exception ex)
@@ -179,6 +182,12 @@ namespace OriCoopBepInEx.Plugin
 
         public void TeleportToNearestPartner()
         {
+            if (!_serverAllowTeleport)
+            {
+                Logger.LogWarning("Teleporte bloqueado: servidor com /coop tp off.");
+                UI.NativeUIHelper.ShowToast("[Ori Coop] Teleporte desativado pelo servidor (/coop tp on).", 3.5f);
+                return;
+            }
             int targetId = FindNearestRemotePlayer();
             if (targetId >= 0 && _network != null)
             {
@@ -247,6 +256,7 @@ namespace OriCoopBepInEx.Plugin
             _network.PingUpdated += OnPingUpdated;
             _network.IdentityAssigned += OnIdentityAssigned;
             _network.PlayerDisconnected += OnPlayerDisconnected;
+            _network.ConfigSyncReceived += OnConfigSyncReceived;
             _network.Start();
 
             _harmony = new Harmony("com.ikkikuuro.oricoop");
@@ -269,7 +279,34 @@ namespace OriCoopBepInEx.Plugin
         {
             lock (_remotePlayers)
             {
-                _remotePlayers[snapshot.PlayerId] = snapshot;
+                // BUG #2/#3: pacotes ANIM chegam sem posicao/nick. Sobrescrever aqui
+                // zerava a posicao no HUD e quebrava FindNearestRemotePlayer (teleporte).
+                PlayerSnapshot existing;
+                bool isAnimOnly = (snapshot.Position.X == 0f && snapshot.Position.Y == 0f && snapshot.Position.Z == 0f)
+                    && string.IsNullOrEmpty(snapshot.Nick) && !string.IsNullOrEmpty(snapshot.Animation.Name);
+                if (isAnimOnly && _remotePlayers.TryGetValue(snapshot.PlayerId, out existing) && existing != null)
+                {
+                    existing.Animation = snapshot.Animation;
+                    existing.Timestamp = snapshot.Timestamp;
+                    snapshot = existing;
+                }
+                else
+                {
+                    if (isAnimOnly)
+                    {
+                        // Sem posicao base ainda: guarda mesmo assim para o manager fundir.
+                        _remotePlayers[snapshot.PlayerId] = snapshot;
+                    }
+                    else
+                    {
+                        if (_remotePlayers.TryGetValue(snapshot.PlayerId, out existing) && existing != null
+                            && !string.IsNullOrEmpty(existing.Animation.Name) && string.IsNullOrEmpty(snapshot.Animation.Name))
+                        {
+                            snapshot.Animation = existing.Animation;
+                        }
+                        _remotePlayers[snapshot.PlayerId] = snapshot;
+                    }
+                }
             }
 
             lock (_mainThreadActions)
@@ -298,9 +335,65 @@ namespace OriCoopBepInEx.Plugin
                         return;
                     }
 
-                    sein.transform.position = new UnityEngine.Vector3(position.X, position.Y, position.Z);
+                    // BUG #3: so trocar transform.position nao bastava — o controlador
+                    // de fisica do Sein mantinha velocidade residual e a camera nao
+                    // acompanhava, parecendo que "nada aconteceu".
+                    Vector3 dest = new UnityEngine.Vector3(position.X, position.Y, position.Z);
+                    try
+                    {
+                        sein.transform.position = dest;
+
+                        Rigidbody rb = sein.GetComponent<Rigidbody>();
+                        if (rb != null)
+                        {
+                            rb.velocity = Vector3.zero;
+                            rb.angularVelocity = Vector3.zero;
+                        }
+
+                        try
+                        {
+                            Component seinComp = sein.GetComponent<SeinCharacter>();
+                            if (seinComp != null)
+                            {
+                                System.Reflection.PropertyInfo speedProp =
+                                    typeof(SeinCharacter).GetProperty("Speed");
+                                if (speedProp != null && speedProp.CanWrite)
+                                {
+                                    speedProp.SetValue(seinComp, Vector3.zero, null);
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogWarning("Falha ao aplicar teleporte: " + ex.Message);
+                        return;
+                    }
+
+                    EnsureCameraFollowsLocalPlayer();
+
                     Logger.LogMessage("<color=cyan>SERVER</color>: Teleported to " + destination + ".");
+                    UI.NativeUIHelper.ShowToast("[Ori Coop] Teleportado ate " + destination + "!", 3.0f);
                 });
+            }
+        }
+
+        private void OnConfigSyncReceived(bool tp, bool ab, bool story, bool world, bool doors, bool names)
+        {
+            bool changed = (tp != _serverAllowTeleport);
+            _serverAllowTeleport = tp;
+            Logger.LogInfo(string.Format("Config do servidor: tp={0} abilities={1} world={2} doors={3} names={4}",
+                tp ? "on" : "off", ab ? "on" : "off", world ? "on" : "off", doors ? "on" : "off", names ? "on" : "off"));
+            if (changed && !tp)
+            {
+                lock (_mainThreadActions)
+                {
+                    _mainThreadActions.Enqueue(delegate
+                    {
+                        UI.NativeUIHelper.ShowToast("[Ori Coop] Teleporte desativado pelo servidor.", 3.0f);
+                    });
+                }
             }
         }
 
@@ -518,15 +611,7 @@ namespace OriCoopBepInEx.Plugin
 
             if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.T))
             {
-                int targetId = FindNearestRemotePlayer();
-                if (targetId >= 0 && _network != null)
-                {
-                    _network.SendTeleportRequest(targetId);
-                }
-                else
-                {
-                    Logger.LogWarning("Nenhum parceiro remoto disponivel para teleporte.");
-                }
+                TeleportToNearestPartner();
             }
         }
 

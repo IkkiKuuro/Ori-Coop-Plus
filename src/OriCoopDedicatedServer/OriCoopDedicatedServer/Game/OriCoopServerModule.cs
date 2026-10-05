@@ -15,7 +15,7 @@ namespace OriCoopDedicatedServer.Game
             base.Name = "Ori and the Blind Forest: DE - Coop Plus Server";
             Instance = this;
 
-            ServerConfig.AllowTeleport = false;
+            ServerConfig.AllowTeleport = true;
             ServerConfig.ShareAbilities = false;
             ServerConfig.ShareStoryOnly = false;
             ServerConfig.ShareWorldEvents = false;

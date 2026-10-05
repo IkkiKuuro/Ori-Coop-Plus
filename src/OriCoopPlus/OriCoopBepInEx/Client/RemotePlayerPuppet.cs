@@ -88,8 +88,34 @@ namespace OriCoopBepInEx.Client
                 return;
             }
 
-            ActionVisualState fallbackState = AnimationRegistry.InferStateFromMovement(_velocity, true);
+            // Se o registro ainda esta vazio (Prewarm correu cedo demais), tenta de novo
+            // de forma preguicosa antes de desistir — sem isso o puppet ficava invisivel/T-pose.
+            if (!AnimationRegistry.IsPrewarmed)
+            {
+                try { AnimationRegistry.Prewarm(); } catch { }
+            }
+
+            // Velocidade agora e inferida no RemotePlayerManager (o servidor nao envia).
+            // isGrounded e heuristico: queda/subida forte indica arco aereo.
+            bool isGrounded = Mathf.Abs(_velocity.y) < 1.0f;
+            ActionVisualState fallbackState = AnimationRegistry.InferStateFromMovement(_velocity, isGrounded);
             TextureAnimationWithTransitions targetClip = AnimationRegistry.Resolve(animName, animHash, fallbackState);
+
+            // Ultima tentativa: cataloga clipes visiveis no puppet e resolve de novo.
+            if (targetClip == null)
+            {
+                try
+                {
+                    TextureAnimationWithTransitions[] local =
+                        GetComponentsInChildren<TextureAnimationWithTransitions>(true);
+                    if (local != null && local.Length > 0)
+                    {
+                        AnimationRegistry.RegisterClips(local);
+                        targetClip = AnimationRegistry.Resolve(animName, animHash, fallbackState);
+                    }
+                }
+                catch { }
+            }
 
             bool applied = false;
             if (targetClip != null)
@@ -111,7 +137,23 @@ namespace OriCoopBepInEx.Client
         private void Update()
         {
             float dt = Time.deltaTime;
-            transform.position = Vector3.Lerp(transform.position, _targetPosition, dt * InterpolationSmoothing);
+            // Teleporte/logoff: se o alvo esta muito longe, teleporta em vez de
+            // atravessar o mapa voando (que parecia "sumico" do jogador).
+            float dist = Vector3.Distance(transform.position, _targetPosition);
+            if (dist > 15f)
+            {
+                transform.position = _targetPosition;
+            }
+            else
+            {
+                transform.position = Vector3.Lerp(transform.position, _targetPosition, dt * InterpolationSmoothing);
+            }
+        }
+
+        public void SnapTo(Vector3 position)
+        {
+            _targetPosition = position;
+            transform.position = position;
         }
     }
 }

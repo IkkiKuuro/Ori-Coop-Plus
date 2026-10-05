@@ -132,6 +132,7 @@ namespace OriCoopBepInEx.Client
             }
 
             RemoteVisualController.StripFrustumOptimizers(root);
+            RemoteVisualController.StripExtraLights(root);
 
             // 1. Immediately disable all Behaviours so no unneeded script can ever run Update/FixedUpdate
             Behaviour[] allBehaviours = root.GetComponentsInChildren<Behaviour>(true);
@@ -143,6 +144,18 @@ namespace OriCoopBepInEx.Client
                     b is CharacterSpriteMirror ||
                     b is RemotePlayerPuppet ||
                     b is RemoteVisualController)
+                {
+                    continue;
+                }
+                // CharacterAnimationSystem e mantido (desligado) para nao quebrar o
+                // SpriteAnimator; destrui-lo congelava animacoes (bug #2).
+                if (b.GetType().Name == "CharacterAnimationSystem")
+                {
+                    try { b.enabled = false; } catch { }
+                    continue;
+                }
+                // Lights ja removidas em StripExtraLights; garante resto desligado.
+                if (b is Light)
                 {
                     continue;
                 }
@@ -219,6 +232,12 @@ namespace OriCoopBepInEx.Client
                 {
                     continue;
                 }
+                // Preserva o driver de animacao (desligado acima); sem ele o
+                // SpriteAnimator nao troca de clipe (bug #2).
+                if (mb.GetType().Name == "CharacterAnimationSystem")
+                {
+                    continue;
+                }
 
                 try
                 {
@@ -244,6 +263,23 @@ namespace OriCoopBepInEx.Client
                         c is RemotePlayerPuppet ||
                         c is RemoteVisualController)
                     {
+                        continue;
+                    }
+                    // Lights/halos/flares ja tratados; garante remocao se sobrou algum.
+                    if (c is Light)
+                    {
+                        try { UnityEngine.Object.DestroyImmediate(c); } catch { }
+                        continue;
+                    }
+                    string tn = c.GetType().Name;
+                    if (tn == "CharacterAnimationSystem" || tn == "Halo" ||
+                        tn == "LensFlare" || tn == "FlareLayer" || tn == "Projector")
+                    {
+                        if (tn == "CharacterAnimationSystem")
+                        {
+                            continue;
+                        }
+                        try { UnityEngine.Object.DestroyImmediate(c); } catch { }
                         continue;
                     }
 

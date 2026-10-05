@@ -88,6 +88,21 @@ O pacote negativo `-7` e reservado para ping. O cliente envia um envelope com
 tempo de ida e volta em milissegundos. Esse valor e exibido para cada jogador
 no HUD do cliente.
 
+## Fragmentacao POSITION/ANIM (causa raiz do bug #2)
+
+`POSITION` (1) carrega `int playerId`, `Vector3 pos`, `Color RGB (3 bytes)`,
+`bool facingLeft`, `string nick` — mas **nao** carrega velocidade nem nome de
+animacao. `ANIM` (2) carrega apenas `int playerId` + `string animName`.
+O servidor retransmite os dois fluxos separadamente.
+
+O cliente **nao** deve aplicar cada pacote como snapshot completo: um `ANIM`
+puro aplicado como posicao `(0,0,0)` teleporta o puppet para a origem (jogador
+some do mapa), e um `POSITION` puro sem `AnimName` congela no Idle. A regra
+atual (ver `RemotePlayerManager`) e fundir por jogador — ultimo `POSITION` +
+ultimo `ANIM` — e inferir velocidade pelo delta de posicao dividido por `dt`
+(o servidor nunca envia velocidade), com snap imediato no spawn e snap quando
+o alvo esta a mais de 15 unidades.
+
 ## Regras para mudancas
 
 1. Nunca reutilize um ID existente para outro significado.

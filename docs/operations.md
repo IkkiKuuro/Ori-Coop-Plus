@@ -47,6 +47,25 @@ Também é possível compilar via dotnet CLI se o SDK .NET compatível estiver i
 dotnet build .\src\OriCoopPlus\OriCoopBepInEx\OriCoopBepInEx.csproj --configuration Release
 ```
 
+### Build alternativo sem SDK instalado
+
+Se a maquina tiver apenas o runtime .NET (sem SDK), como ocorreu em 05/10/2026:
+
+1. Cliente: `build.ps1` funciona normalmente, pois usa `csc.exe` do
+   .NET Framework (limitado a C# 5 — nao usar interpolacao `$""`, `?.`,
+   `Action` com mais de 4 parametros ou `Object.Instantiate` sem cast no
+   codigo do plugin).
+2. Servidor (`net8.0`, C# moderno): baixe os pacotes NuGet
+   `Microsoft.Net.Compilers.Toolset` (Roslyn) e `Microsoft.NETCore.App.Ref`
+   (assemblies de referencia), extraia e compile com
+   `dotnet <toolset>/tasks/netcore/bincore/csc.dll /nostdlib+` referenciando
+   `ref/net8.0/*.dll`. Saida esperada: `OriCoopDedicatedServer.Core.dll` e
+   `OriCoopDedicatedServer.dll` (reutilize `OriCoopDedicatedServer.exe`,
+   `.deps.json`, `.runtimeconfig.json` e `start_server.bat` do build anterior,
+   pois o apphost e os metadados nao mudaram). Valide com
+   `.\OriCoopDedicatedServer.exe --auto --max-players 2 --port 7779` e com
+   `coop` + `stop` via stdin (deve listar `Teleporte: ATIVADO` por padrao).
+
 ## Instalacao
 
 Com `<ORI_DIR>` apontando para a pasta do jogo:
@@ -365,6 +384,9 @@ Use `/coop` sem argumentos para consultar o estado atual.
 | Conexao concorrente ou logs de `[WW SYSTEM]` | Resquicio de injecao legada do `WW_Launcher` na `UnityEngine.dll` (`MonoBehaviour.Awake`) e `WWClient.dll`. Execute `.\scripts\clean_unityengine_cecil.ps1` e mova `WWClient.dll` para `disabled_plugins`. |
 | Tela branca / 5 FPS ao carregar o save (`DoorWithSlots.get_OriHasTargets`, `SeinPlaceholder.Spawn`) | **Prefixo de Awake bloqueando save**: Patches com prefixo bloqueando `Clone` impediam a inicializacao normal de `Sein(Clone)` gerado pelo sistema de save do jogo. Resolvido com remocao dos prefixos em `SeinCharacterPatch` e garantia de isolamento apenas no momento da clonagem do puppet em `RemotePuppetFactory`. |
 | Interface de Conexao (F6) travada em "Conectando..." mesmo apos conectado | **Ordem de precedencia em `ServerConnectionDialog.OnGUI`**: A verificacao de `_statusFeedback` (preenchida com mensagem transitoria ao clicar em Conectar) vinha antes da verificacao de `IsConnected`. **Solucao implementada**: `IsConnected` agora tem prioridade maxima na renderizacao do status, exibe `CONECTADO (ID | Ping | Parceiros)` em verde e reseta automaticamente mensagens temporarias. |
+| Jogador local extremamente claro/branco estourado (bloom) com coop ativo | **Light duplicada + sharedMaterial mutado**: cada puppet clonava a Point Light do Sein e `RemoteVisualController` alterava `sharedMaterial` (alpha forcado a 1), vazando para o Ori local e dobrando o brilho aditivo. **Solucao aplicada e instalada**: `StripExtraLights()` remove `Light/Halo/Flare/Projector/Trail`, cada renderer do puppet recebe `Material` proprio clonado e o watchdog nao toca mais em alpha compartilhado. DLL recompilada (66.048 bytes) e copiada para `<ORI_DIR>\BepInEx\plugins\`. Teste visual em jogo ainda **a confirmar**. |
+| Segundo jogador invisivel no mapa e sem animacoes | **Pacotes POSITION/ANIM aplicados isoladamente + `CharacterAnimationSystem` destruido**: `ANIM` sem posicao zerava `_targetPosition` para `(0,0,0)` e `POSITION` sem `AnimName`/velocidade congelava no Idle; alem disso o limpador destruia o driver de animacao. **Solucao aplicada e instalada**: `RemotePlayerManager` funde por jogador, infere velocidade por delta/dt, da snap no spawn e a mais de 15u; `CharacterAnimationSystem` preservado (desligado) e `AnimationRegistry` com prewarm preguicoso. Mesma DLL reinstalada acima. Teste com 2 clientes ainda **a confirmar**. |
+| Teleporte (T / menu) nao funciona | **Tres causas combinadas**: `AllowTeleport=false` por padrao no servidor, cliente ignorava `CONFIG_SYNC` (ID 16) e `OnTeleportRequested` so trocava `transform.position` sem zerar fisica/camera. **Solucao aplicada e instalada**: padrao `AllowTeleport=true` (smoke test confirma `/coop` => `Teleporte: ATIVADO`), cliente trata `CONFIG_SYNC` com aviso, teleporte zera `Rigidbody`/Speed (via reflexao), reancora camera e exibe toast; erros do servidor vao so ao solicitante. Servidor recompilado e copiado para `<ORI_DIR>\Server\`. Teste com 2 clientes (`T` + `/tp`) ainda **a confirmar**. |
 | Alteracao de apelido/nome nao funciona ou reverte para string de boas-vindas do servidor | **Sobrescrita por banner de boas-vindas e falta de propagacao**: Ao receber o pacote `-1`, o cliente interpretava a string de boas-vindas (`WELCOME TO THE SERVER YOUR ID: X`) como apelido e sobrescrevia `_localNick`. **Solucao implementada**: `NetworkService` agora despacha o apelido configurado pelo jogador, `OriCoopPlugin.Publish` anexa o apelido aos snapshots, e `ServerConnectionDialog` conta com botao dedicado `[ Salvar Nome ]` que dispara `SendNicknameUpdate` para o servidor dedicado e atualiza o `TextMesh` flutuante do boneco. |
 | Submenu "Ori Coop" nao responde a clique/gamepad e despausa jogo | **Bug conhecido**: `OriCoopMenuScreen` abre mas os itens clonados nao processam raycast/foco de entrada, e ao sair ocorre despausa indevida mantendo elementos de UI abertos. Use a tecla F6 para a tela de conexao funcional. |
 
