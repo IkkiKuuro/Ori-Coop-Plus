@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using OriCoop;
 using OriCoopDedicatedServer.Core;
@@ -98,11 +98,21 @@ namespace OriCoopDedicatedServer.Game
                     }
 
                     int targetId = packet.ReadInt();
-                    Client target;
                     Vector3 targetPosition;
-                    if (!Server.Clients.TryGetValue(targetId, out target) ||
-                        target == null || !target.IsReady ||
-                        !LastKnownPlayerPositions.TryGetValue(targetId, out targetPosition))
+                    string targetNick;
+
+                    if (DummyManager.IsActive && targetId == DummyManager.DummyId)
+                    {
+                        targetPosition = DummyManager.DummyPosition;
+                        targetNick = DummyManager.DummyNick;
+                    }
+                    else if (Server.Clients.TryGetValue(targetId, out Client target) &&
+                             target != null && target.IsReady &&
+                             LastKnownPlayerPositions.TryGetValue(targetId, out targetPosition))
+                    {
+                        targetNick = target.Nick ?? ("Player " + target.Id);
+                    }
+                    else
                     {
                         ServerSend.SendChatMessage("<color=yellow>Destino de teleporte indisponivel.</color>");
                         break;
@@ -110,9 +120,9 @@ namespace OriCoopDedicatedServer.Game
 
                     Packet teleport = new Packet((int)PacketType.TELEPORT_REQUEST);
                     teleport.Write(targetPosition);
-                    teleport.Write(target.Nick ?? ("Player " + target.Id));
+                    teleport.Write(targetNick);
                     pl.Send(teleport);
-                    ServerSend.SendChatMessage("<color=cyan>" + pl.Nick + "</color> foi teleportado ate <color=cyan>" + target.Nick + "</color>.");
+                    ServerSend.SendChatMessage("<color=cyan>" + pl.Nick + "</color> foi teleportado ate <color=cyan>" + targetNick + "</color>.");
                     break;
                 }
                 case PacketType.SKILL:

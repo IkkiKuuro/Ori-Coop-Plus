@@ -296,6 +296,23 @@ Use `/coop` sem argumentos para consultar o estado atual.
 4. **Persistencia de Rede durante a Pausa:**
    - Mantenha o menu de pausa aberto por mais de 30 segundos com outro jogador conectado; confirme que a conexao nao sofre timeout e o ping continua atualizando.
 
+### Registro de Validacao de Build, Instalacao e Servidor
+
+1. **Compilacao:**
+   - `OriCoopDedicatedServer.csproj` compilado com sucesso (.NET 8.0 Release).
+   - `OriCoopBepInEx.dll` compilado via `build.ps1` com 22 arquivos de origem (Release, 41.984 bytes).
+2. **Implantacao em `<ORI_DIR>` (`D:\SteamLibrary\steamapps\common\Ori DE`):**
+   - Plugin copiado para `BepInEx\plugins\OriCoopBepInEx.dll`.
+   - Servidor dedicado copiado para `<ORI_DIR>\Server\` e `<ORI_DIR>\ServerClient\` (binarios + `start_server.bat`).
+   - Configuracao do BepInEx ajustada em `BepInEx\config\BepInEx.cfg` com `Preloader.Entrypoint` apontando para `Assembly-CSharp.dll` / `LoadingBootstrap` / `Awake`.
+   - Configuracao de rede validada em `BepInEx\config\com.ikkikuuro.oricoop.cfg` (`Host = 127.0.0.1`, `Port = 7777`, `Nickname = Ori_Player`).
+3. **Validacao de Execucao do Servidor:**
+   - Execucao de `OriCoopDedicatedServer.exe` testada: bind UDP na porta 7777 confirmado, deteccao de enderecos LAN OK e modulo `Ori Coop Plus Server Module CARREGADO` ativo.
+4. **Validacao de Handshake e Teleporte com Bot Dummy:**
+   - Handshake UDP de duas etapas testado: `Connect` (-1) -> `Welcome` (-1, id 0) -> `Ready` (-1, nickname "Ori_Player" codificado com `WriteLegacyString`). O servidor validou e ativou o cliente com sucesso (`IsReady = true`), eliminando o erro `Could not read value of type 'string'!`.
+   - Teleporte direcionado ao `DummyManager` (ID 999) validado tanto pelo comando de console `/tp <origem> Bot_Amigo` quanto pelo handler `TELEPORT_REQUEST` disparado pela tecla `T`.
+   - Limpeza de injeções legadas do `WWClient` e `UnityEngine.dll` executada com sucesso via `.\scripts\clean_unityengine_cecil.ps1`.
+
 
 ## Diagnostico rapido
 
@@ -312,6 +329,9 @@ Use `/coop` sem argumentos para consultar o estado atual.
 | Servidor cheio | reduza conexoes ou inicie com maximo entre 1 e 10 |
 | Cliente LAN nao conecta | confirme o IPv4 `LAN address`, a porta UDP, o firewall do host e se todos estao na mesma rede |
 | `KeyNotFoundException` com a chave `4` ao conectar | substitua o executável pelo build atual; o servidor deve criar e percorrer exatamente os slots configurados |
+| `RECIVE UDP CALLBACK ERROR: Could not read value of type 'string'!` em `ClientDoneMessage` | Incompatibilidade de serialização de string no handshake (`BinaryWriter.Write(string)` gerava LEB128 em vez de Int32). Corrigido com `WriteLegacyString` no cliente e leitura segura no `ServerHandle`. |
+| `No remote player is available for teleport` com bot `dummy` ativo | O `DummyManager` (ID 999) não estava incluído na lista de clientes válidos para teleporte. Suporte adicionado no handler `TELEPORT_REQUEST` do servidor e no comando `/tp`. |
+| Conexão concorrente ou logs de `[WW SYSTEM]` | Resquício de injeção legada do `WW_Launcher` na `UnityEngine.dll` (`MonoBehaviour.Awake`) e `WWClient.dll`. Execute `.\scripts\clean_unityengine_cecil.ps1` e mova `WWClient.dll` para `disabled_plugins`. |
 | Submenu "Ori Coop" não responde a clique/gamepad e despausa jogo | **Bug conhecido**: `OriCoopMenuScreen` abre mas os itens clonados não processam raycast/foco de entrada, e ao sair ocorre despausa indevida mantendo elementos de UI abertos. Em investigação. |
 | Impossível conectar ao servidor in-game | **Bug conhecido / Ausência de UI de conexão**: Não há tela no jogo para inserir IP/porta do servidor dedicado. A conexão depende de configuração manual no arquivo `com.ikkikuuro.oricoop.cfg`. |
 
