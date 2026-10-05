@@ -1,5 +1,8 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
+using Game;
 using OriCoop;
 using UnityEngine;
 
@@ -13,6 +16,12 @@ namespace OriCoopBepInEx.Client
             new Dictionary<string, TextureAnimationWithTransitions>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<ActionVisualState, TextureAnimationWithTransitions> s_stateClips =
             new Dictionary<ActionVisualState, TextureAnimationWithTransitions>();
+        // Clipes comprovadamente vindos da hierarquia do Sein (via reflection
+        // nos campos dos MonoBehaviours). Resolve exato (hash/nome) confia em
+        // qualquer cache porque assets são compartilhados; o fallback por
+        // estado SÓ usa este conjunto — nunca clipe de inimigo.
+        private static readonly Dictionary<TextureAnimationWithTransitions, bool> s_seinClipRefs =
+            new Dictionary<TextureAnimationWithTransitions, bool>();
 
         // SEED: aliases best-effort — calibrar nomes exatos via dump F8
         // (plano 02). Miss aqui nunca vira sprite aleatório: resolve
@@ -78,16 +87,200 @@ namespace OriCoopBepInEx.Client
                 return;
             }
 
+            // Caminho autoritativo: coleta via reflection nos campos do Sein.
+            // (TextureAnimationWithTransitions é ScriptableObject — não adianta
+            // GetComponentsInChildren, e o scan global antigo catalogava
+            // inimigos e o primeiro "idle" de inimigo virava o Idle do Ori.)
+            try
+            {
+                GameObject seinGo = FindSeinObject();
+                if (seinGo != null)
+                {
+                    List<TextureAnimationWithTransitions> seinClips = CollectClips(seinGo);
+                    if (seinClips != null && seinClips.Count > 0)
+                    {
+                        RegisterSeinClips(seinClips);
+                        IsPrewarmed = true;
+                        Debug.Log(string.Format("[OriCoop] AnimationRegistry pré-aquecido do Sein: {0} clipes.", s_animNameCache.Count));
+                        return;
+                    }
+                }
+            }
+            catch { }
+
+            // Fallback: scan global, mas SEM popular s_stateClips (só cache
+            // nome/hash para resolve exato de assets compartilhados).
             TextureAnimationWithTransitions[] allClips = Resources.FindObjectsOfTypeAll<TextureAnimationWithTransitions>();
             if (allClips != null && allClips.Length > 0)
             {
-                RegisterClips(allClips);
+                RegisterClips(allClips, false);
                 IsPrewarmed = true;
-                Debug.Log(string.Format("[OriCoop] AnimationRegistry pré-aquecido: {0} clipes catalogados.", s_animNameCache.Count));
+                Debug.Log(string.Format("[OriCoop] AnimationRegistry pré-aquecido (global, sem fallback): {0} clipes catalogados.", s_animNameCache.Count));
             }
         }
 
+        private static GameObject FindSeinObject()
+        {
+            try
+            {
+                if (Game.Characters.Sein != null && Game.Characters.Sein.gameObject != null)
+                {
+                    return Game.Characters.Sein.gameObject;
+                }
+            }
+            catch { }
+            GameObject go = GameObject.Find("Characters/Sein");
+            if (go == null)
+            {
+                go = GameObject.Find("Sein");
+            }
+            return go;
+        }
+
+        // Coleta todos os clipes referenciados pelos MonoBehaviours da
+        // hierarquia (SeinIdle.IdleAnimation, SeinRun.RunAnimation, arrays de
+        // SeinJump/SeinDoubleJump/SeinWallJump, DirectionalAnimationSets do
+        // Bash, containers CarryAnimations/SwimmingAnimations...).
+        public static List<TextureAnimationWithTransitions> CollectClips(GameObject root)
+        {
+            List<TextureAnimationWithTransitions> result = new List<TextureAnimationWithTransitions>();
+            if (root == null)
+            {
+                return result;
+            }
+            try
+            {
+                MonoBehaviour[] behaviours = root.GetComponentsInChildren<MonoBehaviour>(true);
+                for (int i = 0; i < behaviours.Length; i++)
+                {
+                    MonoBehaviour mb = behaviours[i];
+                    if (mb == null)
+                    {
+                        continue;
+                    }
+                    List<object> visited = new List<object>();
+                    CollectFromObject(mb, result, visited, 0);
+                }
+            }
+            catch { }
+            return result;
+        }
+
+        private static void CollectFromObject(object obj, List<TextureAnimationWithTransitions> result, List<object> visited, int depth)
+        {
+            if (obj == null || depth > 3)
+            {
+                return;
+            }
+            for (int i = 0; i < visited.Count; i++)
+            {
+                if (visited[i] == obj)
+                {
+                    return;
+                }
+            }
+            visited.Add(obj);
+
+            Type type = obj.GetType();
+            FieldInfo[] fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            for (int i = 0; i < fields.Length; i++)
+            {
+                FieldInfo field = fields[i];
+                if (field == null)
+                {
+                    continue;
+                }
+                Type fieldType = field.FieldType;
+                object value;
+                try
+                {
+                    value = field.GetValue(obj);
+                }
+                catch
+                {
+                    continue;
+                }
+                if (value == null)
+                {
+                    continue;
+                }
+                TextureAnimationWithTransitions clip = value as TextureAnimationWithTransitions;
+                if (clip != null)
+                {
+                    if (!result.Contains(clip))
+                    {
+                        result.Add(clip);
+                    }
+                    continue;
+                }
+                if (fieldType.IsArray)
+                {
+                    Array arr = value as Array;
+                    if (arr != null)
+                    {
+                        for (int j = 0; j < arr.Length; j++)
+                        {
+                            object item;
+                            try
+                            {
+                                item = arr.GetValue(j);
+                            }
+                            catch
+                            {
+                                continue;
+                            }
+                            TextureAnimationWithTransitions itemClip = item as TextureAnimationWithTransitions;
+                            if (itemClip != null)
+                            {
+                                if (!result.Contains(itemClip))
+                                {
+                                    result.Add(itemClip);
+                                }
+                            }
+                            else if (item != null && depth < 3 && !(item is UnityEngine.Object) && !(item is string))
+                            {
+                                CollectFromObject(item, result, visited, depth + 1);
+                            }
+                        }
+                    }
+                    continue;
+                }
+                if (value is UnityEngine.Object || value is string)
+                {
+                    continue;
+                }
+                if (fieldType.IsPrimitive || fieldType.IsEnum)
+                {
+                    continue;
+                }
+                if (fieldType == typeof(Type) || fieldType == typeof(FieldInfo))
+                {
+                    continue;
+                }
+                CollectFromObject(value, result, visited, depth + 1);
+            }
+        }
+
+        public static bool IsSeinClip(TextureAnimationWithTransitions clip)
+        {
+            if (clip == null)
+            {
+                return false;
+            }
+            return s_seinClipRefs.ContainsKey(clip);
+        }
+
+        public static void RegisterSeinClips(IEnumerable<TextureAnimationWithTransitions> clips)
+        {
+            RegisterClips(clips, true);
+        }
+
         public static void RegisterClips(IEnumerable<TextureAnimationWithTransitions> clips)
+        {
+            RegisterClips(clips, false);
+        }
+
+        public static void RegisterClips(IEnumerable<TextureAnimationWithTransitions> clips, bool populateStateClips)
         {
             if (clips == null)
             {
@@ -102,8 +295,24 @@ namespace OriCoopBepInEx.Client
                 }
 
                 uint hash = AnimationSyncData.ComputeFnv1aHash(clip.name);
-                s_animHashCache[hash] = clip;
-                s_animNameCache[clip.name] = clip;
+                if (!s_animHashCache.ContainsKey(hash))
+                {
+                    s_animHashCache[hash] = clip;
+                }
+                if (!s_animNameCache.ContainsKey(clip.name))
+                {
+                    s_animNameCache[clip.name] = clip;
+                }
+
+                if (!populateStateClips)
+                {
+                    continue;
+                }
+
+                if (!s_seinClipRefs.ContainsKey(clip))
+                {
+                    s_seinClipRefs[clip] = true;
+                }
 
                 ActionVisualState mappedState;
                 if (s_nameToState.TryGetValue(clip.name, out mappedState)
@@ -121,27 +330,48 @@ namespace OriCoopBepInEx.Client
                 ActionVisualState mapped;
                 string stateText = s_nameToState.TryGetValue(entry.Key, out mapped)
                     ? mapped.ToString() : "UNKNOWN";
-                Debug.Log(string.Format("[ANIM-DUMP] name={0} hash=0x{1:X8} estado?={2}",
-                    entry.Key, AnimationSyncData.ComputeFnv1aHash(entry.Key), stateText));
+                string origin = (entry.Value != null && s_seinClipRefs.ContainsKey(entry.Value)) ? "sein" : "global";
+                Debug.Log(string.Format("[ANIM-DUMP] name={0} hash=0x{1:X8} estado?={2} src={3}",
+                    entry.Key, AnimationSyncData.ComputeFnv1aHash(entry.Key), stateText, origin));
             }
             Debug.Log(string.Format("[OriCoop] ANIM-DUMP concluído: {0} clipes.", s_animNameCache.Count));
+        }
+
+        // Resolve exato: hash/nome do sender referenciam o MESMO asset
+        // compartilhado — seguro mesmo vindo do cache global.
+        public static bool TryResolveExact(string animName, uint animHash, out TextureAnimationWithTransitions clip)
+        {
+            if (animHash != 0 && s_animHashCache.TryGetValue(animHash, out clip) && clip != null)
+            {
+                return true;
+            }
+            if (!string.IsNullOrEmpty(animName) && s_animNameCache.TryGetValue(animName, out clip) && clip != null)
+            {
+                return true;
+            }
+            clip = null;
+            return false;
+        }
+
+        // Fallback por estado: SÓ clipes comprovadamente do Sein.
+        public static bool TryResolveState(ActionVisualState state, out TextureAnimationWithTransitions clip)
+        {
+            if (s_stateClips.TryGetValue(state, out clip) && clip != null)
+            {
+                return true;
+            }
+            clip = null;
+            return false;
         }
 
         public static TextureAnimationWithTransitions Resolve(string animName, uint animHash, ActionVisualState fallbackState)
         {
             TextureAnimationWithTransitions result;
-
-            if (animHash != 0 && s_animHashCache.TryGetValue(animHash, out result))
+            if (TryResolveExact(animName, animHash, out result))
             {
                 return result;
             }
-
-            if (!string.IsNullOrEmpty(animName) && s_animNameCache.TryGetValue(animName, out result))
-            {
-                return result;
-            }
-
-            if (s_stateClips.TryGetValue(fallbackState, out result))
+            if (TryResolveState(fallbackState, out result))
             {
                 return result;
             }

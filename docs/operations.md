@@ -318,11 +318,20 @@ Use `/coop` sem argumentos para consultar o estado atual.
    - Acesse pelo submenu "Configurar Conexao de Servidor" ou pela tecla de atalho **F6**.
    - Permite alterar IP, Porta e Nickname em tempo real, buscar servidores na LAN (`Buscar LAN`) e conectar/desconectar sem reiniciar o jogo.
 
-### Validacao do rework de anims (build pendente de teste em jogo)
+### Validacao do rework de anims + puppet leve (build 77.312 bytes, 2026-10-05 — pendente de teste em jogo)
 
 Procedimento em [`docs/anim-test-battery.md`](anim-test-battery.md) (T0–T4).
+O que este build corrige e precisa de confirmação com 2 clientes:
+parado o puppet deve ficar em Idle do Ori (nunca sprite de inimigo);
+Bash/Dash/Glide/Stomp/ChargeJump/DoubleJump/WallSlide/WallJump devem aparecer
+(sender lê `Controller` + nome do clipe, não só velocidade);
+`F8` deve listar clipes com `src=sein` cobrindo os 12 estados.
+**Implantada:** DLL 77.312 bytes copiada para
+`D:\SteamLibrary\...\BepInEx\plugins\` em 2026-10-05. Inclui puppet leve
+(`RemotePuppetFactory` instancia só a subárvore visual do Sein) + correções
+de anim da build anterior.
 Resultado da rodada: **a confirmar** — rodar com 2 clientes e anotar aqui
-data, bytes da DLL e itens pendentes.
+data e itens pendentes.
 
 ### Registro de Validacao de Build, Instalacao e Servidor
 
@@ -381,6 +390,8 @@ data, bytes da DLL e itens pendentes.
 | F8 nao abre | save controlavel, DLL correta, reinicio do jogo e log de carregamento |
 | Jogador sem nome | cliente/servidor da mesma versao e `/coop names on` |
 | Teleporte indisponivel | use `/coop tp on`, mantenha dois jogadores conectados e aguarde snapshots; `T` teleporta para o remoto mais proximo e `/tp <origem> <destino>` continua disponivel |
+| Ori parado vira sprite de inimigo | **Fallback de anim contaminado por clipes globais**: `AnimationRegistry.Prewarm` usava `Resources.FindObjectsOfTypeAll` (inclui Kuro, slugs, owls...) e `s_stateClips` ficava com o primeiro `idle` achado, que podia ser de inimigo; além disso `TextureAnimationWithTransitions` é `ScriptableObject`, então `GetComponentsInChildren<...>` no puppet nunca achava nada. **Solução aplicada (build 76.800 bytes, 2026-10-05, a confirmar em jogo)**: coleta via reflection nos campos do Sein (`CollectClips`), fallback por estado só com clipes do Sein, resolve exato (hash/nome = mesmo asset compartilhado) com prioridade. Feche o jogo antes de copiar a DLL (arquivo fica bloqueado com `OriDE.exe` aberto). |
+| Bash/Dash/Glide/Stomp/ChargeJump/DoubleJump/WallSlide não aparecem no remoto | **Sender derivava estado só por velocidade** (`DeriveState` só conhecia Idle/Run/Jump/Fall). **Solução aplicada (mesmo build)**: `PlayerStateReader` lê `IsOnGround` real + `Controller.IsBashing/IsStomping/IsDashing/IsGliding/IsChargingJump/IsGrabbingWall` com prioridade, e o nome do clipe local como autoridade para estados especiais. |
 | DLL nao pode ser copiada | encerre o jogo e `OriCoopDedicatedServer.exe` |
 | Servidor cheio | reduza conexoes ou inicie com maximo entre 1 e 10 |
 | Cliente LAN nao conecta | confirme o IPv4 `LAN address`, a porta UDP, o firewall do host e se todos estao na mesma rede |

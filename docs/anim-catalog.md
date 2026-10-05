@@ -2,9 +2,25 @@
 
 Mapeamento explícito nome → `ActionVisualState`, usado por
 `AnimationRegistry.s_nameToState`. **Nomes exatos a confirmar** via dump em
-jogo (`F8` → linhas `[ANIM-DUMP]` no `LogOutput.log`); aliases abaixo são
-SEED best-effort. Miss nunca vira sprite aleatório: resolve desconhecido
-retorna null e o puppet mantém a última anim.
+jogo (`F8` → linhas `[ANIM-DUMP]` no `LogOutput.log`, agora com coluna
+`src=sein/global`); aliases abaixo são SEED best-effort. Miss nunca vira
+sprite aleatório: resolve desconhecido retorna null e o puppet mantém a
+última anim.
+
+> Correção 2026-10-05 (DLL 76.800 bytes): o fallback por estado (`s_stateClips`)
+> só aceita clipes coletados via reflection na hierarquia do Sein
+> (`CollectClips` — `SeinIdle/Run/Jump/...`, arrays de `Jump/DoubleJump/WallJump`,
+> `DirectionalAnimationSets` do Bash, containers `Carry/Swimming`). O scan global
+> (`Resources.FindObjectsOfTypeAll`) continua existindo como fallback, mas só
+> alimenta o cache de resolve exato (hash/nome apontam para o mesmo asset
+> compartilhado, sempre seguro) e nunca o fallback — foi assim que um `idle`
+> de inimigo (Kuro/slug/owl/...) virou o Idle do Ori parado. Ordem de resolve:
+> exato → estado-Sein → manter última. Sender agora deriva o estado com
+> prioridade real: `Controller.IsBashing/IsStomping/IsDashing/IsGliding/
+> IsChargingJump/IsGrabbingWall` + nome do clipe (doublejump/backflip, walljump,
+> wallslide/grabwall, bash, glide/feather/parachute, chargejump/superjump,
+> stomp/groundpound, dash) antes da velocidade; `IsOnGround` real substitui a
+> heurística `|vy|<1`.
 
 | Estado | Aliases SEED (case-insensitive) | Hash FNV1a |
 |--------|---------------------------------|------------|
