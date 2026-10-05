@@ -295,12 +295,15 @@ Use `/coop` sem argumentos para consultar o estado atual.
    - Pressione **B** (Xbox) / **Circle** (PlayStation) ou **Esc**; verifique o retorno limpo ao menu de pausa principal com o foco restaurado em "Ori Coop".
 4. **Persistencia de Rede durante a Pausa:**
    - Mantenha o menu de pausa aberto por mais de 30 segundos com outro jogador conectado; confirme que a conexao nao sofre timeout e o ping continua atualizando.
+5. **Dialogo In-Game de Conexao (`ServerConnectionDialog`):**
+   - Acesse pelo submenu "Configurar Conexao de Servidor" ou pela tecla de atalho **F6**.
+   - Permite alterar IP, Porta e Nickname em tempo real, buscar servidores na LAN (`Buscar LAN`) e conectar/desconectar sem reiniciar o jogo.
 
 ### Registro de Validacao de Build, Instalacao e Servidor
 
 1. **Compilacao:**
    - `OriCoopDedicatedServer.csproj` compilado com sucesso (.NET 8.0 Release).
-   - `OriCoopBepInEx.dll` compilado via `build.ps1` com 22 arquivos de origem (Release, 41.984 bytes).
+   - `OriCoopBepInEx.dll` compilado via `build.ps1` com 23 arquivos de origem (Release, 53.760 bytes).
 2. **Implantacao em `<ORI_DIR>` (`D:\SteamLibrary\steamapps\common\Ori DE`):**
    - Plugin copiado para `BepInEx\plugins\OriCoopBepInEx.dll`.
    - Servidor dedicado copiado para `<ORI_DIR>\Server\` e `<ORI_DIR>\ServerClient\` (binarios + `start_server.bat`).

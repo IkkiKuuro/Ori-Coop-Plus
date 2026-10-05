@@ -25,12 +25,19 @@ namespace OriCoopBepInEx.Client
             }
 
             instance.name = string.Format("RemotePlayer_{0}_{1}", playerId, nickname);
-            instance.SetActive(true);
-            UnityEngine.Object.DontDestroyOnLoad(instance);
-
             RemotePlayerPuppet puppet = instance.GetComponent<RemotePlayerPuppet>() ?? instance.AddComponent<RemotePlayerPuppet>();
             puppet.Setup(playerId, nickname);
 
+            try
+            {
+                instance.SetActive(true);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[OriCoop] Non-fatal exception activating puppet: " + ex.Message);
+            }
+
+            UnityEngine.Object.DontDestroyOnLoad(instance);
             return puppet;
         }
 
@@ -72,23 +79,30 @@ namespace OriCoopBepInEx.Client
         {
             RemoteVisualController.StripFrustumOptimizers(root);
 
-            string[] componentsToDestroy = new string[]
+            // Destroy child GameObjects that represent gameplay hints, UI meters, or nested skill prefabs
+            Transform[] children = root.GetComponentsInChildren<Transform>(true);
+            for (int i = 0; i < children.Length; i++)
             {
-                "SeinCharacter",
-                "SeinController",
-                "SeinInput",
-                "SeinMovement",
-                "SeinCutsceneBlocked",
-                "SeinCutsceneMovement",
-                "SeinMortality",
-                "SeinEnergy",
-                "SeinInventory",
-                "SeinPickupProcessor",
-                "PlatformBehaviour",
-                "Rigidbody",
-                "CharacterAnimationSystem"
-            };
+                Transform t = children[i];
+                if (t == null || t == root.transform)
+                {
+                    continue;
+                }
 
+                string name = t.gameObject.name;
+                if (name.Contains("bentBar") ||
+                    name.Contains("radialEnemyHighlight") ||
+                    name.Contains("PlayerGrab") ||
+                    name.Contains("Hint") ||
+                    name.Contains("Skill") ||
+                    name.Contains("mistErase") ||
+                    name.Contains("lightTrail"))
+                {
+                    UnityEngine.Object.DestroyImmediate(t.gameObject);
+                }
+            }
+
+            // Strip ALL components that are not essential visual / animation / puppet controllers
             Component[] allComps = root.GetComponentsInChildren<Component>(true);
             for (int i = 0; i < allComps.Length; i++)
             {
@@ -98,15 +112,19 @@ namespace OriCoopBepInEx.Client
                     continue;
                 }
 
-                string name = c.GetType().Name;
-                for (int j = 0; j < componentsToDestroy.Length; j++)
+                if (c is Transform ||
+                    c is Renderer ||
+                    c is MeshFilter ||
+                    c is SpriteAnimatorWithTransitions ||
+                    c is CharacterSpriteMirror ||
+                    c is RemotePlayerPuppet ||
+                    c is RemoteVisualController)
                 {
-                    if (name == componentsToDestroy[j])
-                    {
-                        UnityEngine.Object.DestroyImmediate(c);
-                        break;
-                    }
+                    continue;
                 }
+
+                // Destroys all Sein*, Character*, Platform*, Rigidbody, Colliders, etc.
+                UnityEngine.Object.DestroyImmediate(c);
             }
 
             Collider[] colliders = root.GetComponentsInChildren<Collider>(true);

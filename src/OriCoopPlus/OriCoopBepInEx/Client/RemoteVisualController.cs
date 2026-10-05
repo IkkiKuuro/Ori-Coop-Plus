@@ -24,7 +24,11 @@ namespace OriCoopBepInEx.Client
             for (int i = 0; i < allRenderers.Length; i++)
             {
                 Renderer r = allRenderers[i];
-                if (r == null || r is ParticleSystemRenderer || r.name.Contains("NameTag") || r.name.Contains("Shadow"))
+                if (r == null || r is ParticleSystemRenderer ||
+                    r.name.Contains("NameTag") || r.name.Contains("Shadow") ||
+                    r.name.Contains("bentBar") || r.name.Contains("radialEnemyHighlight") ||
+                    r.name.Contains("ghostTrail") || r.name.Contains("mistErase") ||
+                    r.name.Contains("CoopNameTag"))
                 {
                     continue;
                 }
@@ -52,6 +56,8 @@ namespace OriCoopBepInEx.Client
 
         public void EnforceVisibility(string callerContext)
         {
+            bool isInit = string.Equals(callerContext, "InitializeHierarchy", StringComparison.OrdinalIgnoreCase);
+
             for (int i = 0; i < _renderers.Count; i++)
             {
                 Renderer r = _renderers[i];
@@ -63,13 +69,19 @@ namespace OriCoopBepInEx.Client
                 if (!r.enabled)
                 {
                     r.enabled = true;
-                    ReplicationObservability.LogVisibilityEvent(_playerId, string.Format("Renderer '{0}' reenabled by [{1}]", r.name, callerContext), true);
+                    if (isInit)
+                    {
+                        ReplicationObservability.LogVisibilityEvent(_playerId, string.Format("Renderer '{0}' reenabled by [{1}]", r.name, callerContext), true);
+                    }
                 }
 
                 if (!r.gameObject.activeSelf)
                 {
                     r.gameObject.SetActive(true);
-                    ReplicationObservability.LogVisibilityEvent(_playerId, string.Format("GameObject '{0}' reenabled by [{1}]", r.gameObject.name, callerContext), true);
+                    if (isInit)
+                    {
+                        ReplicationObservability.LogVisibilityEvent(_playerId, string.Format("GameObject '{0}' reenabled by [{1}]", r.gameObject.name, callerContext), true);
+                    }
                 }
             }
 

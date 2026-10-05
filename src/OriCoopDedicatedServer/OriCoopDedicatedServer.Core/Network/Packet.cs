@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using OriCoopDedicatedServer.Core.API;
@@ -237,15 +237,56 @@ public class Packet : IDisposable
 
 	public string ReadString(bool moveReadPos = true)
 	{
+		if (buffer.Count <= readPos)
+		{
+			throw new Exception("Could not read value of type 'string'!");
+		}
+
 		try
 		{
-			int num = ReadInt();
-			string @string = Encoding.ASCII.GetString(readableBuffer, readPos, num);
-			if (moveReadPos && @string.Length > 0)
+			int remaining = buffer.Count - readPos;
+
+			// Format 1: 4-byte Int32 length prefix (used by WriteLegacyString)
+			if (remaining >= 4)
 			{
-				readPos += num;
+				int intLen = BitConverter.ToInt32(readableBuffer, readPos);
+				if (intLen >= 0 && intLen <= (remaining - 4))
+				{
+					string s = Encoding.ASCII.GetString(readableBuffer, readPos + 4, intLen);
+					if (moveReadPos)
+					{
+						readPos += 4 + intLen;
+					}
+					return s;
+				}
 			}
-			return @string;
+
+			// Format 2: 7-bit encoded int / 1-byte length prefix (standard .NET BinaryWriter.Write(string))
+			int lebLen = 0;
+			int shift = 0;
+			int curPos = readPos;
+			while (curPos < buffer.Count && shift < 32)
+			{
+				byte b = readableBuffer[curPos++];
+				lebLen |= (b & 0x7F) << shift;
+				if ((b & 0x80) == 0)
+				{
+					break;
+				}
+				shift += 7;
+			}
+
+			if (lebLen >= 0 && lebLen <= (buffer.Count - curPos))
+			{
+				string s = Encoding.UTF8.GetString(readableBuffer, curPos, lebLen);
+				if (moveReadPos)
+				{
+					readPos = curPos + lebLen;
+				}
+				return s;
+			}
+
+			throw new Exception("String length out of bounds.");
 		}
 		catch
 		{

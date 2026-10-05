@@ -30,6 +30,7 @@ namespace OriCoopBepInEx.Client
 
             if (puppet != null)
             {
+                puppet.UpdateNickname(snapshot.Nick);
                 Vector3 pos = new Vector3(snapshot.Position.X, snapshot.Position.Y, snapshot.Position.Z);
                 Vector3 vel = new Vector3(snapshot.Velocity.X, snapshot.Velocity.Y, 0f);
                 uint hash = AnimationSyncData.ComputeFnv1aHash(snapshot.Animation.Name);

@@ -16,6 +16,8 @@ namespace OriCoopBepInEx.Client
         private string _lastAnimName;
         private const float InterpolationSmoothing = 18f;
 
+        private UI.FloatingNameTag _nameTag;
+
         public int PlayerId { get; private set; }
         public string Nickname { get; private set; }
 
@@ -31,6 +33,29 @@ namespace OriCoopBepInEx.Client
             _spriteMirror = GetComponentInChildren<CharacterSpriteMirror>();
 
             _targetPosition = transform.position;
+
+            if (_nameTag == null)
+            {
+                _nameTag = UI.FloatingNameTag.Attach(gameObject, Nickname);
+                if (id == 999 && _nameTag != null)
+                {
+                    _nameTag.SetColor(new Color(0.2f, 0.85f, 1f)); // Distinct cyan color for test dummy bot
+                }
+            }
+        }
+
+        public void UpdateNickname(string nickname)
+        {
+            if (string.IsNullOrEmpty(nickname) || nickname == Nickname)
+            {
+                return;
+            }
+
+            Nickname = nickname;
+            if (_nameTag != null)
+            {
+                _nameTag.SetNickname(nickname);
+            }
         }
 
         public void ApplySnapshot(Vector3 position, Vector3 velocity, bool facingLeft, string animName, uint animHash)

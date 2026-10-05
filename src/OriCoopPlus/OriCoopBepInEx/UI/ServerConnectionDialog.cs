@@ -117,20 +117,22 @@ namespace OriCoopBepInEx.UI
 
             // Status atual
             string statusLine;
-            if (_isScanningLan)
+            bool isConnected = OriCoopPlugin.Instance != null && OriCoopPlugin.Instance.IsConnected;
+            if (isConnected)
+            {
+                _statusFeedback = string.Empty;
+                statusLine = string.Format("<color=#00ff88>CONECTADO</color> (ID: {0} | Ping: {1} ms | Parceiros: {2})",
+                    OriCoopPlugin.Instance.AssignedPlayerId,
+                    OriCoopPlugin.Instance.CurrentPing < 0 ? "--" : OriCoopPlugin.Instance.CurrentPing.ToString(),
+                    OriCoopPlugin.Instance.ConnectedPlayerCount);
+            }
+            else if (_isScanningLan)
             {
                 statusLine = "<color=#ffea00>PROCURANDO SERVIDOR NA REDE LOCAL (LAN)...</color>";
             }
             else if (!string.IsNullOrEmpty(_statusFeedback))
             {
                 statusLine = _statusFeedback;
-            }
-            else if (OriCoopPlugin.Instance != null && OriCoopPlugin.Instance.IsConnected)
-            {
-                statusLine = string.Format("<color=#00ff88>CONECTADO</color> (ID: {0} | Ping: {1} ms | Parceiros: {2})",
-                    OriCoopPlugin.Instance.AssignedPlayerId,
-                    OriCoopPlugin.Instance.CurrentPing < 0 ? "--" : OriCoopPlugin.Instance.CurrentPing.ToString(),
-                    OriCoopPlugin.Instance.ConnectedPlayerCount);
             }
             else
             {
@@ -159,8 +161,9 @@ namespace OriCoopBepInEx.UI
 
             // Linha de Botoes
             float btnW = (contentWidth - 16f) / 3f;
+            string connectBtnLabel = isConnected ? "Reconectar" : "Conectar";
 
-            if (GUI.Button(new Rect(winX + padX, curY, btnW, 32f), "Conectar", _buttonPrimaryStyle))
+            if (GUI.Button(new Rect(winX + padX, curY, btnW, 32f), connectBtnLabel, _buttonPrimaryStyle))
             {
                 PerformConnect();
             }
@@ -177,7 +180,7 @@ namespace OriCoopBepInEx.UI
             curY += 40f;
 
             // Desconectar se estiver conectado
-            if (OriCoopPlugin.Instance != null && OriCoopPlugin.Instance.IsConnected)
+            if (isConnected)
             {
                 if (GUI.Button(new Rect(winX + padX, curY, contentWidth, 24f), "Desconectar do Servidor", _buttonSecondaryStyle))
                 {
