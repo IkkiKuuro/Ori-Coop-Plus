@@ -89,6 +89,30 @@ namespace OriCoopDedicatedServer.Game
                     ServerSend.SendToAll(pl.Id, packet3);
                     break;
                 }
+                case (PacketType)18:
+                {
+                    Vector3 statePos = packet.ReadVector3();
+                    byte state = packet.ReadByte();
+                    byte stateFlags = packet.ReadByte();
+                    int stateAnimHash = packet.ReadInt();
+                    float stateSpeedX = packet.ReadFloat();
+                    float stateSpeedY = packet.ReadFloat();
+
+                    LastKnownPlayerPositions[pl.Id] = statePos;
+
+                    Packet statePacket = new Packet();
+                    statePacket.Write(18);
+                    statePacket.Write(pl.Id);
+                    statePacket.Write(statePos);
+                    statePacket.Write(state);
+                    statePacket.Write(stateFlags);
+                    statePacket.Write(stateAnimHash);
+                    statePacket.Write(stateSpeedX);
+                    statePacket.Write(stateSpeedY);
+                    statePacket.Write(pl.Nick ?? ("Player " + pl.Id));
+                    ServerSend.SendToAll(pl.Id, statePacket);
+                    break;
+                }
                 case PacketType.TELEPORT_REQUEST:
                 {
                     if (!ServerConfig.AllowTeleport)
