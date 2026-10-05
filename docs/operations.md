@@ -47,24 +47,24 @@ Também é possível compilar via dotnet CLI se o SDK .NET compatível estiver i
 dotnet build .\src\OriCoopPlus\OriCoopBepInEx\OriCoopBepInEx.csproj --configuration Release
 ```
 
-### Build alternativo sem SDK instalado
+### Build do servidor sem `dotnet` na maquina (fallback historico)
 
-Se a maquina tiver apenas o runtime .NET (sem SDK), como ocorreu em 05/10/2026:
+Se algum dia a maquina tiver apenas o runtime .NET (sem SDK), como ocorreu
+em 05/10/2026 antes da instalacao do SDK 8.0.425, o fallback e baixar os
+pacotes NuGet `Microsoft.Net.Compilers.Toolset` (Roslyn) e
+`Microsoft.NETCore.App.Ref` (assemblies de referencia), extrair e compilar
+com `dotnet <toolset>/tasks/netcore/bincore/csc.dll /nostdlib+` referenciando
+`ref/net8.0/*.dll`. Com o SDK instalado (caso atual), prefira o `dotnet build`
+da secao Build acima. Nota: o `OriCoopDedicatedServer.Core.dll` antigo nao e
+mais gerado (Core fora do build desde o cutover 02-04).
 
 1. Cliente: `build.ps1` funciona normalmente, pois usa `csc.exe` do
    .NET Framework (limitado a C# 5 — nao usar interpolacao `$""`, `?.`,
    `Action` com mais de 4 parametros ou `Object.Instantiate` sem cast no
    codigo do plugin).
-2. Servidor (`net8.0`, C# moderno): baixe os pacotes NuGet
-   `Microsoft.Net.Compilers.Toolset` (Roslyn) e `Microsoft.NETCore.App.Ref`
-   (assemblies de referencia), extraia e compile com
-   `dotnet <toolset>/tasks/netcore/bincore/csc.dll /nostdlib+` referenciando
-   `ref/net8.0/*.dll`. Saida esperada: `OriCoopDedicatedServer.Core.dll` e
-   `OriCoopDedicatedServer.dll` (reutilize `OriCoopDedicatedServer.exe`,
-   `.deps.json`, `.runtimeconfig.json` e `start_server.bat` do build anterior,
-   pois o apphost e os metadados nao mudaram). Valide com
-   `.\OriCoopDedicatedServer.exe --auto --max-players 2 --port 7779` e com
-   `coop` + `stop` via stdin (deve listar `Teleporte: ATIVADO` por padrao).
+2. Servidor (`net8.0`, C# moderno): apos compilar, valide com
+   `.\OriCoopDedicatedServer.exe --auto --max-players 2 --port 7779`
+   e com `coop` + `stop` via stdin (deve listar `Teleporte: ATIVADO` por padrao).
 
 ## Instalacao
 
@@ -74,10 +74,15 @@ Com `<ORI_DIR>` apontando para a pasta do jogo:
 <ORI_DIR>\BepInEx\plugins\OriCoopBepInEx.dll
 <ORI_DIR>\Server\OriCoopDedicatedServer.exe
 <ORI_DIR>\Server\OriCoopDedicatedServer.dll
-<ORI_DIR>\Server\OriCoopDedicatedServer.Core.dll
 <ORI_DIR>\Server\OriCoopDedicatedServer.deps.json
 <ORI_DIR>\Server\OriCoopDedicatedServer.runtimeconfig.json
 ```
+
+O `OriCoopDedicatedServer.Core.dll` antigo nao faz mais parte da instalacao
+(Core fora do build desde o cutover 02-04; pode ser removido do `Server\` se
+ainda existir de builds anteriores). O servidor grava `serverconfig.json`
+(opcoes persistentes) e `Logs\server.log` (niveis Debug/Info/Warning/Error)
+ao lado do exe.
 
 Feche `OriDE.exe` e o servidor antes de substituir DLLs.
 
@@ -111,7 +116,8 @@ nao copie referencias privadas para a pasta do plugin.
    ```
 
 6. Confirme no console `Server started on 7777` e
-   `Ori Coop Plus Server Module CARREGADO`.
+   `Ori Coop Plus Server Module CARREGADO` (novo core e o unico path desde o
+   cutover 02-04; a flag `--net2` nao e mais necessaria).
 7. No arquivo
    `<ORI_DIR>\BepInEx\config\com.ikkikuuro.oricoop.cfg`, use:
 
@@ -248,10 +254,11 @@ O jogador se conecta exclusivamente ao executável
 | --- | --- |
 | `/coop` | mostra/configura `tp`, `abilities`, `story`, `world`, `doors` e `names` |
 | `/tp <origem> <destino>` | teleporta a origem ate o destino; alias `/teleport`; com log de diagnóstico no cliente (`Teleporte recebido/aplicado/fixado`) |
+| `/help` | lista os comandos; aliases `h`, `ajuda`, `?` (via chat, responde em unicast ao solicitante) |
+| `/stop` | encerra o servidor; aliases `quit`, `exit`, `sair` |
 | `/clientcolors` | alterna cores de clientes; aliases `cc`, `clientc`, `ccolors` |
 | `/entitysync` | alterna sincronizacao de entidades; aliases `es`, `sync` |
 | `/dummy` | controla o bot de teste; aliases `bot`, `testbot`, `fakeplayer`, `fakepl`, `fp`; `echo [on\|off]` espelha suas anims com ping 20-150 ms, `anim [on\|off\|<estado>]` performa ciclo roteirizado para validar anims do puppet |
-| `/fakeplayer` | alterna o jogador falso avancado; aliases `fakepl`, `fp` |
 
 Exemplos:
 
@@ -277,9 +284,9 @@ Use `/coop` sem argumentos para consultar o estado atual.
 9. Com dois jogadores em uma cena controlavel, ative `/coop tp on`, aguarde
    snapshots e pressione `T` em um cliente; confirme a mensagem colorida e a
    mudanca de posicao. Depois teste `/tp <origem> <destino>` no console.
-10. Ative `entitysync` e confirme nos logs do cliente a recepcao da variavel
-    `ES`; a sincronizacao visual de entidades alem dos jogadores ainda esta
-    **a confirmar**.
+10. Ative `entitysync` e confirme nos logs do cliente a recepcao do oitavo
+    bool do `CONFIG_SYNC` (evento `EntitySyncChanged`); a sincronizacao
+    visual de entidades alem dos jogadores ainda esta **a confirmar**.
 11. Confirme no canto superior esquerdo o HUD `ORI COOP PLUS`, com uma linha
     por jogador contendo nick, coordenadas e ping. `--` indica que a primeira
     resposta de ping ainda nao chegou.
@@ -326,15 +333,138 @@ parado o puppet deve ficar em Idle do Ori (nunca sprite de inimigo);
 Bash/Dash/Glide/Stomp/ChargeJump/DoubleJump/WallSlide/WallJump devem aparecer
 (sender lê `Controller` + nome do clipe, não só velocidade);
 `F8` deve listar clipes com `src=sein` cobrindo os 12 estados.
-**Implantada:** DLL 78.336 bytes copiada para
-`D:\SteamLibrary\...\BepInEx\plugins\` e `OriCoopDedicatedServer.Core.dll`
-(35.328 bytes) para `<ORI_DIR>\Server\` em 2026-10-05. Inclui puppet leve,
-correções de anim, `FindLocalSein` no teleporte e `SIO_UDP_CONNRESET` no
-servidor/cliente. **Reinicie o servidor** para valer o fix de UDP.
+**Implantada (parcial):** `OriCoopDedicatedServer.dll` (104.448 bytes, core novo
+único) copiada para `<ORI_DIR>\Server\` em 2026-10-05. **DLL do cliente
+(84.992 bytes) PENDENTE:** jogo aberto (`OriDE.exe`) bloqueou a cópia —
+fechar o jogo e copiar
+`src\OriCoopPlus\OriCoopBepInEx\bin\Release\OriCoopBepInEx.dll` para
+`<ORI_DIR>\BepInEx\plugins\`. Inclui merge com o rewrite do servidor
+(envelope 0x4F43v2), puppet leve, correções de anim, `FindLocalSein` e
+`SIO_UDP_CONNRESET` (agora em `Net/Transport/UdpTransport.cs`; Core antigo
+fora do build).
 Resultado da rodada: **a confirmar** — rodar com 2 clientes e anotar aqui
 data e itens pendentes.
 
 ### Registro de Validacao de Build, Instalacao e Servidor
+
+### Tracer 02-01 — novo core `--net2` + SmokeProbe (2026-10-05, automatizado)
+
+Comando unico (sobe o servidor sozinho na porta de teste, valida e derruba):
+
+```powershell
+dotnet run --project .\src\OriCoopDedicatedServer\SmokeProbe\SmokeProbe.csproj -- --port 7779 --test all
+```
+
+Resultado: `SMOKE_OK`, exit 0. Etapas cobertas, nesta ordem, contra servidor
+fresco (`--net2 --auto --port 7779 --max-players 10`):
+
+1. `readiness`: lixo sem envelope recebe `Reject 106` (prova que o `--net2` subiu).
+2. `invalid-magic`: datagrama de 8B recebe `Reject` com mensagem citando
+   `magic 0x4F43 + versao 2` e nao cria sessao (handshake seguinte ainda recebe IDs 1 e 2).
+3. `handshake`: A→ID 1, B→ID 2 (nunca 0/999); `Confirm` com token errado e
+   `Confirm` de sessao fantasma recebem `Reject`; relay posterior prova `IsReady`.
+4. `relay`: B recebe snapshot de A com `clientId` + `seq` + corpo preservados
+   byte a byte; sem eco para o remetente; reenvio da mesma `seq` descartado (drop-old).
+5. `ping`: `Ping 104` → `Pong 105` com mesmos `sendTicks`; eco em 2 ms (< 1000 ms).
+
+Modos isolados contra um servidor ja em pe: `--test handshake|relay|ping|reliable|timeout|token`
+(aceita lista com virgula, ex. `--test timeout,token`; so `all` exige
+servidor fresco para as assercoes de IDs 1 e 2; `full` e `game` sobem o
+proprio servidor na porta dada — nao use com servidor ja em pe
+nela). Cada modo isolado imprime seu token (`RELIABLE_OK`, `TIMEOUT_OK`,
+`TOKEN_OK`, `GAME_OK`, ...) seguido de `SMOKE_OK`. Cada teste libera seus slots com
+`DISCONNECT` ao final para nao acumular sessoes ate o teto no modo `all`.
+
+### Hardening 02-02 — ACK+retry, sessao, sweeper e chat (2026-10-05, automatizado)
+
+Mesmo comando (`--test all`, servidor fresco `--net2 --auto --port 7779
+--max-players 10`; `server-full` usa servidor proprio `--max-players 2` na
+porta 7790). Resultado: `SMOKE_OK`, exit 0, apos os 5 passos do tracer:
+
+6. `reliable`: chat `-5` com flag `Reliable` recebe `SysAck 103` imediato;
+   sem ACK do destino, o retry entrega copia extra em ~250 ms (B recebe 2+
+   copias e confirma); `PLAYER_STATE` unreliable nao gera `SysAck`.
+7. `chat-rules`: texto de 400 chars chega com 350; `a<b>c>d` chega `abcd`;
+   nick `Evil<Nick>` chega `EvilNick` no sender; `help` responde `Commands: ...`
+   so ao solicitante (D nada recebe em 800 ms).
+8. `token`: `Ping` com token errado e `Ping` de endpoint trocado (mesmo
+   ID+token, outra porta) nao recebem `Pong` nem afetam a sessao; `Ping`
+   valido seguinte recebe `Pong` (sessao viva, `LastSeen` intacto).
+9. `timeout`: B silencia, A faz keep-alive com `Ping`; A recebe
+   `DISCONNECT 4` com o ID de B em ~10 s (limite do teste: 16 s).
+10. `server-full`: com 2 sessoes ativas em servidor `--max-players 2`, o
+    terceiro `Hello` recebe `Reject 106` com motivo `SERVER_FULL`, sem criar
+    sessao.
+
+Observacao Windows/UDP: envios do servidor para sockets ja fechados geram
+rajadas de `ConnectionReset` no log (`ReceiveAsync falhou (segue ouvindo)`);
+o loop de receive absorve e segue — e cosmetico, sem perda de datagramas
+ativos.
+
+### Game 02-03 — handlers, config persistente, dummy 999 + comandos (2026-10-05, automatizado)
+
+Comando unico (sobe servidores proprios, valida e derruba; `serverconfig.json`
+do `bin/Release/net8.0` e preservado/restaurado ao final):
+
+```powershell
+dotnet run --project .\src\OriCoopDedicatedServer\SmokeProbe\SmokeProbe.csproj -- --port 7779 --test game
+```
+
+Resultado: `GAME_OK` + `SMOKE_OK`, exit 0, em duas fases:
+
+- Fase 1 (defaults gravados pelo probe): `CONFIG_SYNC` unicast pos-`Confirm`
+  com os 8 bools `[on,off,off,off,off,off,off,off]`; snapshot de A registrado;
+  `TELEPORT_REQUEST` de B→A responde pos+nick (`Game_A`) e anuncia
+  (`Game_B ... Game_A`) em chat; `DUMMY_ACTION 0` spawna o dummy e B recebe
+  `PLAYER_STATE` com `clientId 999` + nick `Bot_Amigo`; teleport ao 999
+  responde `Bot_Amigo`; segundo toggle gera `DISCONNECT` do 999.
+- Fase 2 (`AllowTeleport=false` no `serverconfig.json`): `CONFIG_SYNC`
+  carrega `off` (prova persistencia entre restarts); `TELEPORT_REQUEST`
+  negado chega so ao solicitante em chat (`Teleporte desativado`) e nada
+  chega a testemunha em 900 ms.
+
+Checagem extra de restart (manual): hash de `serverconfig.json` antes/depois
+de stop+start identico (`PERSIST_OK`). Modo `game` tambem roda dentro do
+`--test all` (servidor proprio na porta `all+21`).
+
+Uso manual do novo core (unico path desde o cutover 02-04; `--net2` ainda e
+aceito como no-op para compatibilidade com scripts):
+
+```powershell
+.\OriCoopDedicatedServer.exe --auto --port 7777 --max-players 4
+```
+
+### Cutover 02-04 — cliente completo + core unico + deploy (2026-10-05)
+
+Cliente BepInEx completo no novo framing (`NetworkService.cs`): `CONFIG_SYNC`
+de 8 bools com leitura tolerante (`ConfigSyncReceived` com 8 valores +
+`EntitySyncChanged` no oitavo); chat, `TELEPORT_REQUEST` 15, `SKILL` 7,
+`COLOR` 6, `DISCONNECT` 4 e `SYNC_*` como `Reliable` com retry 250 ms x3;
+`SysAck` 103 imediato a todo `Reliable` (inclui `CONFIG` do servidor);
+`PLAYER_STATE` on-change + heartbeat 2,5 Hz sem retry, com drop-old
+wrap-safe por remetente; snapshots enfileirados pelo jogo e drenados na
+thread de rede (nenhum envio em `FixedUpdate`); `Reject` 106 reseta para
+re-handshake; sem branches legados. Servidor: `Program` sempre `ServerBoot`
+(Core antigo fora do build, sem `ProjectReference`; arquivos legados ficam no
+disco como referencia), console via `CommandRegistry`, log em `Logs/server.log`
++ console com niveis, prompt interativo com clamp 1–10 e porta 1–65535.
+
+Validacao do cutover (binario do build, sem `--net2`):
+`.\OriCoopDedicatedServer.exe --auto --max-players 2 --port 7779` com `coop`
+(lista `Teleporte: ATIVADO` por padrao) + `stop` via stdin, exit limpo, log
+em `Logs/server.log` com niveis. Regressao total via SmokeProbe
+(`--test all` => `SMOKE_OK`, 15 PASS incl. `game`).
+
+**Implantada:** `OriCoopBepInEx.dll` (83.968 bytes, cliente completo,
+envelope novo exclusivo, sem fallback legado) em
+`C:\...\Ori DE\BepInEx\plugins\` e servidor do novo core
+(`OriCoopDedicatedServer.dll` 103.936 bytes + exe + `deps.json` +
+`runtimeconfig.json`; `Core.dll` removido do `Server\`) em
+`C:\...\Ori DE\Server\` em 2026-10-05, com jogo e servidor fechados antes da
+copia. Boot do binario implantado validado (`serverconfig.json` criado com
+padroes + `coop` => `Teleporte: ATIVADO` + `stop` limpo).
+`D:\SteamLibrary\...` nao existe nesta maquina — deploy feito so em `C:\...`.
+Validacao em jogo com 2 clientes reais ainda **a confirmar**.
 
 1. **Compilacao:**
    - `OriCoopDedicatedServer.csproj` compilado com sucesso (.NET 8.0 Release).

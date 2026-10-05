@@ -12,17 +12,23 @@
 | `src/OriCoopPlus/OriCoopBepInEx/Patches/` | gatilhos Harmony, bypass de culling frustum e leitura de Sein |
 | `src/OriCoopPlus/OriCoopShared/` | contrato cliente-servidor e dados de sincronização |
 
-## Servidor dedicado próprio
+## Servidor dedicado (novo core, unico path)
 
 | Caminho | Papel |
 | --- | --- |
-| `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Program.cs` | argumentos e ciclo de vida do servidor |
-| `src/OriCoopDedicatedServer/OriCoopDedicatedServer.Core/Network/Server.cs` | listener UDP e slots |
-| `src/OriCoopDedicatedServer/OriCoopDedicatedServer.Core/Network/Client.cs` | estado de cada cliente |
-| `src/OriCoopDedicatedServer/OriCoopDedicatedServer.Core/Network/Packet.cs` | serialização de pacotes |
-| `src/OriCoopDedicatedServer/OriCoopDedicatedServer.Core/CommandSystem/` | parser e registro de comandos |
-| `src/OriCoopDedicatedServer/OriCoopDedicatedServer.Core/API/` | API própria, eventos e tipos comuns |
-| `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Game/` | regras, comandos e handlers do Ori compilados no servidor |
+| `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Program.cs` | argumentos e ciclo de vida (sempre `ServerBoot`; `--net2` aceito como no-op) |
+| `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Net/Transport/` | `EnvelopeCodec` (header 24B `0x4F43`/v2) + `UdpTransport` (receive com `Channel`) |
+| `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Net/Session/` | `SessionManager` (token, endpoint fixo, allocator, sweeper 10 s) + `Session` |
+| `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Net/Reliability/` | `AckTracker` (SysAck 103 + retry 250 ms x3 dos criticos) |
+| `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Net/Game/` | `ServerBoot`, `GameHandlers`, `ConfigStore` (`serverconfig.json`), `DummyBot`, `PlayerStateRelay` |
+| `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Net/Game/Commands/` | `ConsoleCommand` + `CommandRegistry` + `OriCommands` (`coop`/`tp`/`dummy`/`clientcolors`/`entitysync`/`help`/`stop`) |
+| `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Net/Diagnostics/` | `ILogger` + `FileConsoleLogger` (console + `Logs/server.log` com niveis) |
+| `src/OriCoopDedicatedServer/SmokeProbe/` | validacao automatizada do protocolo (`--test all`, `SMOKE_OK`) |
+
+Legado fora do build (fica no disco como referencia, nao compila no exe):
+`src/OriCoopDedicatedServer/OriCoopDedicatedServer.Core/` (transporte, sessao
+e comandos pre-rewrite) e `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Game/`
+(path antigo: `Server`, `NetworkHandler`, `DummyManager`, comandos `*Cmd`).
 
 ## Fontes de catalogo
 
