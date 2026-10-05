@@ -60,6 +60,52 @@ Quando o bot virtual de testes está ativo (`dummy`), o servidor aceita requisi�
 de `TELEPORT_REQUEST` direcionadas ao ID `999` (`DummyManager.DummyId`), respondendo
 com a posição flutuante atual do bot e o nick `Bot_Amigo`.
 
+## Envelope versionado (novo core `--net2`, build atual)
+
+> Quebra total com builds anteriores (D-02/D-14/D-15, one-way): datagramas sem
+> `magic 0x4F43` + versao `2` sao recusados com mensagem (`Reject 106`) e nao
+> criam sessao. Cliente e servidor precisam ser sempre do mesmo build; nao ha
+> fallback para o envelope antigo `[clientId + len + payload]`.
+
+Todo datagrama UDP carrega um header fixo de 24 bytes little-endian
+(`src/OriCoopPlus/OriCoopShared/NetProtocol.cs` e o contrato canonico),
+seguido do payload bruto (sem tamanho prefixado: o resto do datagrama):
+
+| Offset | Tamanho | Campo | Descricao |
+| ---: | ---: | --- | --- |
+| 0 | 2 | `magic` | `0x4F43` ("OC"); divergencia = recusa imediata |
+| 2 | 1 | `versao` | `2`; divergencia = recusa imediata |
+| 3 | 1 | `flags` | bit 0 `Reliable` (0x01), bit 1 `AckPresent` (0x02) |
+| 4 | 4 | `seq` | `uint32` por remetente; comparacao wrap-safe (`(int)(nova - ultima) > 0`) |
+| 8 | 4 | `clientId` | remetente (`-1` pre-handshake, `0` servidor); relay preserva o do remetente |
+| 12 | 4 | `token` | `uint32` da sessao (`0` pre-handshake) |
+| 16 | 4 | `packetId` | mensagem de sistema (100–106) ou pacote de jogo (ex. 18) |
+| 20 | 4 | `ackSeq` | `uint32` de confirmacao (usado a partir da confiabilidade 02-02) |
+
+Mensagens de sistema (`packetId`):
+
+| ID | Nome | Direcao | Payload |
+| ---: | --- | --- | --- |
+| 100 | `Hello` | cliente → servidor | `protoVer` byte + nick (`int32 length` + ASCII); header com `clientId -1`, `token 0` |
+| 101 | `Welcome` | servidor → cliente | `assignedId` int + `token` uint + `serverVer` byte |
+| 102 | `Confirm` | cliente → servidor | vazio nesta fase; marca `IsReady=true` (com token correto) |
+| 103 | `Ack` | ambos | reservado a confiabilidade (plano 02-02) |
+| 104 | `Ping` | cliente → servidor | `sendTicks` long; ecoado sem alteracao |
+| 105 | `Pong` | servidor → cliente | mesmo `sendTicks`; cliente calcula ida-volta em ms (HUD) |
+| 106 | `Reject` | servidor → cliente | motivo (`int32 length` + ASCII); nao cria sessao |
+
+Handshake em 3 vias: `Hello(-1)` → `Welcome+assignedId+token` → `Confirm`.
+So apos o `Confirm` o servidor marca `IsReady=true` e aceita snapshots.
+Nick vazio vira `Player_<id>`. IDs incrementais nunca reutilizados no run;
+`0` (servidor) e `999` (dummy) nunca sao alocados. Servidor cheio
+(`count >= MaxPlayers`) recusa o `Hello` com `Reject`.
+
+Regra de corpo legado preservado: pacotes de jogo (`PLAYER_STATE` 18 e
+demais) mantem o corpo byte-identico ao formato anterior, incluindo o
+`int` inicial com o proprio ID (ex. `18`) e a ordem de campos atual — o
+`playerId` do remetente viaja no `clientId` do header e o relay reemite os
+bytes originais sem reconstrucao. Strings continuam `int32 length` + ASCII.
+
 ## Configuracao distribuida
 
 `CONFIG_SYNC` transmite, nesta ordem, os booleanos:

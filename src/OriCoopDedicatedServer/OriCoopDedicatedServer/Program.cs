@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using OriCoopDedicatedServer.Core;
 using OriCoopDedicatedServer.Core.CommandSystem;
 using OriCoopDedicatedServer.Core.Network;
@@ -111,8 +111,16 @@ internal static class Program
 			log.Log(Net.Diagnostics.ServerLogLevel.Info, "NET2", "Digite stop para encerrar.");
 			while (!cts.IsCancellationRequested)
 			{
-				string raw = System.Console.ReadLine() ?? "stop";
-				string cmd = raw.Trim().ToLowerInvariant();
+				var rawOpt = System.Console.ReadLine();
+				if (rawOpt == null)
+				{
+					// stdin fechado/redirecionado (ex. dotnet run em script):
+					// nao encerra; aguarda Ctrl+C ou morte do processo.
+					log.Log(Net.Diagnostics.ServerLogLevel.Debug, "NET2", "stdin indisponivel; aguardando Ctrl+C ou encerramento externo.");
+					try { cts.Token.WaitHandle.WaitOne(); } catch { }
+					break;
+				}
+				string cmd = rawOpt.Trim().ToLowerInvariant();
 				if (cmd == "stop" || cmd == "quit" || cmd == "exit")
 				{
 					try { cts.Cancel(); } catch { }

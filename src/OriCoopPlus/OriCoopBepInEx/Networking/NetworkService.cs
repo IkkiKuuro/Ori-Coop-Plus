@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -9,22 +10,29 @@ using UnityEngine;
 
 namespace OriCoopBepInEx.Networking
 {
+    // Contraparte cliente do envelope versionado (fase 2, D-14/D-15):
+    // fala EXCLUSIVAMENTE o novo envelope do mesmo build, sem fallback legado.
+    // Header 24B little-endian via BinaryWriter campo-a-campo nos offsets de
+    // NetProtocol; corpos de jogo preservados byte-identicos ao legado
+    // (PLAYER_STATE inclui leading int 18; o playerId do remetente viaja no
+    // header clientId — o servidor reemite os bytes sem reconstrucao).
     public sealed class NetworkService : INetworkService
     {
-        private const int ConnectPacket = -1;
-        private const int WelcomePacket = -1;
         private const int ChatPacket = -5;
         private const int NetworkVariablePacket = -3;
-        private const int PingPacket = -7;
         private const long PingIntervalTicks = TimeSpan.TicksPerSecond * 2;
 
         private readonly UdpClient _client;
         private readonly IPEndPoint _server;
         private readonly object _sync = new object();
+        private readonly Dictionary<int, uint> _lastRelaySeq = new Dictionary<int, uint>();
         private Thread _receiveThread;
         private bool _running;
         private int _assignedId = -1;
+        private uint _sessionToken;
+        private uint _sendSeq;
         private string _nickname;
+        private string _lastRejectReason = string.Empty;
         private long _lastPingSentTicks;
         private byte _lastSentState = 255;
         private int _lastSentHash;
@@ -35,6 +43,11 @@ namespace OriCoopBepInEx.Networking
         public bool IsConnected
         {
             get { return _assignedId >= 0; }
+        }
+
+        public string LastRejectReason
+        {
+            get { return _lastRejectReason; }
         }
 
         public event Action<PlayerSnapshot> PlayerSnapshotReceived;
@@ -75,7 +88,10 @@ namespace OriCoopBepInEx.Networking
                 throw new ArgumentException("Network host must resolve to an IPv4 address.", "host");
             }
             _server = new IPEndPoint(serverAddress, port);
-            _assignedId = playerId;
+            // IDs sao atribuidos pelo servidor no handshake (D-05/D-06);
+            // o PlayerId da config e apenas dica e nao e mais usado direto.
+            _assignedId = -1;
+            _sessionToken = 0;
             _nickname = string.IsNullOrEmpty(nickname) ? "NONICK" : nickname.Trim();
         }
 
@@ -144,7 +160,7 @@ namespace OriCoopBepInEx.Networking
                 stateWriter.Write(snapshot.Velocity.Y);
                 WriteLegacyString(stateWriter, !string.IsNullOrEmpty(snapshot.Nick) ? snapshot.Nick : _nickname);
                 stateWriter.Flush();
-                SendEnvelope(stateBody.ToArray());
+                SendSystem((int)PacketType.PLAYER_STATE, stateBody.ToArray(), 0);
             }
 
         }
@@ -170,7 +186,7 @@ namespace OriCoopBepInEx.Networking
                 writer.Write((int)PacketType.TELEPORT_REQUEST);
                 writer.Write(targetPlayerId);
                 writer.Flush();
-                SendEnvelope(body.ToArray());
+                SendSystem((int)PacketType.TELEPORT_REQUEST, body.ToArray(), 0);
             }
         }
 
@@ -184,7 +200,13 @@ namespace OriCoopBepInEx.Networking
             _nickname = newNick.Trim();
             if (_assignedId >= 0)
             {
-                SendReady();
+                using (MemoryStream body = new MemoryStream())
+                using (BinaryWriter writer = new BinaryWriter(body))
+                {
+                    WriteLegacyString(writer, _nickname);
+                    writer.Flush();
+                    SendSystem(NetProtocol.MsgConfirm, body.ToArray(), 0);
+                }
             }
         }
 
@@ -197,15 +219,15 @@ namespace OriCoopBepInEx.Networking
                 {
                     if (_assignedId < 0)
                     {
-                        SendConnectionRequest();
+                        SendHello();
                     }
                     else if (DateTime.UtcNow.Ticks - _lastPingSentTicks >= PingIntervalTicks)
                     {
                         SendPing();
                     }
 
-                    byte[] payload = _client.Receive(ref endpoint);
-                    ReadServerPacket(payload);
+                    byte[] datagram = _client.Receive(ref endpoint);
+                    ReadServerPacket(datagram);
                 }
 
                 catch (SocketException)
@@ -234,32 +256,71 @@ namespace OriCoopBepInEx.Networking
             using (MemoryStream body = new MemoryStream())
             using (BinaryWriter writer = new BinaryWriter(body))
             {
-                writer.Write(PingPacket);
                 writer.Write(sentTicks);
                 writer.Flush();
-                SendEnvelope(body.ToArray());
+                SendSystem(NetProtocol.MsgPing, body.ToArray(), 0);
             }
         }
 
-        private void SendConnectionRequest()
+        private void SendHello()
         {
-            using (MemoryStream stream = new MemoryStream())
-            using (BinaryWriter writer = new BinaryWriter(stream))
+            using (MemoryStream body = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(body))
             {
-                writer.Write(ConnectPacket);
+                writer.Write(NetProtocol.Version);
+                WriteLegacyString(writer, _nickname);
                 writer.Flush();
-                SendRaw(stream.ToArray());
+                SendSystemPreHandshake(NetProtocol.MsgHello, body.ToArray());
             }
         }
 
-        private void SendEnvelope(byte[] body)
+        private void SendConfirm()
+        {
+            SendSystem(NetProtocol.MsgConfirm, new byte[0], 0);
+        }
+
+        private void SendSystem(int packetId, byte[] body, byte flags)
+        {
+            uint seq = NextSeq();
+            SendEnvelope(_assignedId, _sessionToken, packetId, seq, flags, body);
+        }
+
+        private void SendSystemPreHandshake(int packetId, byte[] body)
+        {
+            uint seq = NextSeq();
+            SendEnvelope(NetProtocol.PreHandshakeId, 0, packetId, seq, 0, body);
+        }
+
+        private uint NextSeq()
+        {
+            unchecked
+            {
+                _sendSeq++;
+                if (_sendSeq == 0)
+                {
+                    _sendSeq = 1;
+                }
+                return _sendSeq;
+            }
+        }
+
+        private void SendEnvelope(int clientId, uint token, int packetId, uint seq, byte flags, byte[] body)
         {
             using (MemoryStream stream = new MemoryStream())
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
-                writer.Write(_assignedId);
-                writer.Write(body.Length);
-                writer.Write(body);
+                writer.Write(NetProtocol.Magic);
+                writer.Write(NetProtocol.Version);
+                writer.Write(flags);
+                writer.Write(seq);
+                writer.Write(clientId);
+                writer.Write(token);
+                writer.Write(packetId);
+                writer.Write((uint)0);
+                if (body != null && body.Length > 0)
+                {
+                    writer.Write(body);
+                }
                 writer.Flush();
                 SendRaw(stream.ToArray());
             }
@@ -270,13 +331,43 @@ namespace OriCoopBepInEx.Networking
             _client.Send(payload, payload.Length, _server);
         }
 
-        private void ReadServerPacket(byte[] payload)
+        private void ReadServerPacket(byte[] datagram)
         {
-            using (MemoryStream stream = new MemoryStream(payload))
+            if (datagram == null || datagram.Length < NetProtocol.HeaderSize)
+            {
+                return;
+            }
+            using (MemoryStream stream = new MemoryStream(datagram))
             using (BinaryReader reader = new BinaryReader(stream))
             {
+                ushort magic = reader.ReadUInt16();
+                byte version = reader.ReadByte();
+                reader.ReadByte(); // flags
+                uint seq = reader.ReadUInt32();
+                int headerClientId = reader.ReadInt32();
+                reader.ReadUInt32(); // token (servidor nao o ecoa)
                 int packetId = reader.ReadInt32();
-                if (packetId == PingPacket)
+                reader.ReadUInt32(); // ackSeq
+                if (magic != NetProtocol.Magic || version != NetProtocol.Version)
+                {
+                    return;
+                }
+                if (packetId == NetProtocol.MsgWelcome)
+                {
+                    int assignedId = reader.ReadInt32();
+                    uint token = reader.ReadUInt32();
+                    reader.ReadByte(); // serverVer
+                    _assignedId = assignedId;
+                    _sessionToken = token;
+                    SendConfirm();
+                    Action<string, int> handler = IdentityAssigned;
+                    if (handler != null)
+                    {
+                        handler(_nickname, _assignedId);
+                    }
+                    return;
+                }
+                if (packetId == NetProtocol.MsgPong)
                 {
                     long sentTicks = reader.ReadInt64();
                     int ping = (int)Math.Max(0L, (DateTime.UtcNow.Ticks - sentTicks) / TimeSpan.TicksPerMillisecond);
@@ -287,23 +378,28 @@ namespace OriCoopBepInEx.Networking
                     }
                     return;
                 }
-                if (packetId == WelcomePacket)
+                if (packetId == NetProtocol.MsgReject)
                 {
-                    string welcomeGreeting = ReadLegacyString(reader);
-                    _assignedId = reader.ReadInt32();
-                    SendReady();
-                    Action<string, int> handler = IdentityAssigned;
-                    if (handler != null)
-                    {
-                        handler(_nickname, _assignedId);
-                    }
-
+                    string reason = ReadLegacyString(reader);
+                    _lastRejectReason = reason;
+                    // Sessao morta no servidor (restart/timeout): volta ao handshake (D-07).
+                    _assignedId = -1;
+                    _sessionToken = 0;
                     return;
                 }
                 if (packetId == (int)PacketType.PLAYER_STATE)
                 {
+                    int marker = reader.ReadInt32();
+                    if (marker != (int)PacketType.PLAYER_STATE)
+                    {
+                        throw new InvalidDataException("PLAYER_STATE sem marcador 18.");
+                    }
+                    if (!IsNewerThanLast(headerClientId, seq))
+                    {
+                        return;
+                    }
                     PlayerSnapshot snapshot = new PlayerSnapshot();
-                    snapshot.PlayerId = reader.ReadInt32();
+                    snapshot.PlayerId = headerClientId;
                     snapshot.Position = new Vector3Data(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                     snapshot.Animation.State = (ActionVisualState)reader.ReadByte();
                     byte flags = reader.ReadByte();
@@ -318,6 +414,11 @@ namespace OriCoopBepInEx.Networking
                 }
                 else if (packetId == (int)PacketType.TELEPORT_REQUEST)
                 {
+                    int marker = reader.ReadInt32();
+                    if (marker != (int)PacketType.TELEPORT_REQUEST)
+                    {
+                        throw new InvalidDataException("TELEPORT sem marcador.");
+                    }
                     Vector3Data position = new Vector3Data(
                         reader.ReadSingle(),
                         reader.ReadSingle(),
@@ -332,6 +433,11 @@ namespace OriCoopBepInEx.Networking
 
                 else if (packetId == ChatPacket)
                 {
+                    int marker = reader.ReadInt32();
+                    if (marker != ChatPacket)
+                    {
+                        throw new InvalidDataException("Chat sem marcador.");
+                    }
                     string sender = ReadLegacyString(reader);
                     string message = ReadLegacyString(reader);
                     Action<string, string> handler = ChatMessageReceived;
@@ -342,6 +448,11 @@ namespace OriCoopBepInEx.Networking
                 }
                 else if (packetId == (int)PacketType.DISCONNECT)
                 {
+                    int marker = reader.ReadInt32();
+                    if (marker != (int)PacketType.DISCONNECT)
+                    {
+                        throw new InvalidDataException("Disconnect sem marcador.");
+                    }
                     int disconnectedId = reader.ReadInt32();
                     Action<int> handler = PlayerDisconnected;
                     if (handler != null)
@@ -351,8 +462,11 @@ namespace OriCoopBepInEx.Networking
                 }
                 else if (packetId == (int)PacketType.CONFIG_SYNC)
                 {
-                    // BUG #3: o servidor sempre enviou CONFIG_SYNC mas o cliente ignorava,
-                    // entao o jogador nunca sabia que o teleporte estava OFF.
+                    int marker = reader.ReadInt32();
+                    if (marker != (int)PacketType.CONFIG_SYNC)
+                    {
+                        throw new InvalidDataException("Config sem marcador.");
+                    }
                     try
                     {
                         bool tp = reader.ReadBoolean();
@@ -371,6 +485,11 @@ namespace OriCoopBepInEx.Networking
                 }
                 else if (packetId == NetworkVariablePacket)
                 {
+                    int marker = reader.ReadInt32();
+                    if (marker != NetworkVariablePacket)
+                    {
+                        throw new InvalidDataException("NetVar sem marcador.");
+                    }
                     string name = ReadLegacyString(reader);
                     string value = ReadLegacyString(reader);
                     if (string.Equals(name, "ES", StringComparison.OrdinalIgnoreCase))
@@ -389,16 +508,22 @@ namespace OriCoopBepInEx.Networking
             }
         }
 
-        private void SendReady()
+        private bool IsNewerThanLast(int senderId, uint seq)
         {
-            using (MemoryStream body = new MemoryStream())
-            using (BinaryWriter writer = new BinaryWriter(body))
+            uint last;
+            if (_lastRelaySeq.TryGetValue(senderId, out last))
             {
-                writer.Write(-1);
-                WriteLegacyString(writer, _nickname);
-                writer.Flush();
-                SendEnvelope(body.ToArray());
+                unchecked
+                {
+                    uint diff = seq - last;
+                    if ((int)diff <= 0)
+                    {
+                        return false;
+                    }
+                }
             }
+            _lastRelaySeq[senderId] = seq;
+            return true;
         }
 
         private void RaiseSnapshot(PlayerSnapshot snapshot)

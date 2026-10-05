@@ -335,6 +335,42 @@ data e itens pendentes.
 
 ### Registro de Validacao de Build, Instalacao e Servidor
 
+### Tracer 02-01 — novo core `--net2` + SmokeProbe (2026-10-05, automatizado)
+
+Comando unico (sobe o servidor sozinho na porta de teste, valida e derruba):
+
+```powershell
+dotnet run --project .\src\OriCoopDedicatedServer\SmokeProbe\SmokeProbe.csproj -- --port 7779 --test all
+```
+
+Resultado: `SMOKE_OK`, exit 0. Etapas cobertas, nesta ordem, contra servidor
+fresco (`--net2 --auto --port 7779 --max-players 10`):
+
+1. `readiness`: lixo sem envelope recebe `Reject 106` (prova que o `--net2` subiu).
+2. `invalid-magic`: datagrama de 8B recebe `Reject` com mensagem citando
+   `magic 0x4F43 + versao 2` e nao cria sessao (handshake seguinte ainda recebe IDs 1 e 2).
+3. `handshake`: A→ID 1, B→ID 2 (nunca 0/999); `Confirm` com token errado e
+   `Confirm` de sessao fantasma recebem `Reject`; relay posterior prova `IsReady`.
+4. `relay`: B recebe snapshot de A com `clientId` + `seq` + corpo preservados
+   byte a byte; sem eco para o remetente; reenvio da mesma `seq` descartado (drop-old).
+5. `ping`: `Ping 104` → `Pong 105` com mesmos `sendTicks`; eco em 2 ms (< 1000 ms).
+
+Modos isolados contra um servidor ja em pe: `--test handshake|relay|ping`
+(so `all` exige servidor fresco para as assercoes de IDs 1 e 2).
+
+Uso manual do novo core (path antigo continua sendo o default sem `--net2`):
+
+```powershell
+.\OriCoopDedicatedServer.exe --net2 --auto --port 7777 --max-players 4
+```
+
+**Implantada:** `OriCoopBepInEx.dll` (79.360 bytes, envelope novo exclusivo,
+sem fallback legado) em `C:\...\Ori DE\BepInEx\plugins\` e servidor com novo
+core em `C:\...\Ori DE\Server\` em 2026-10-05. Boot do binario implantado
+validado (`Novo core ouvindo na porta 7779`). `D:\SteamLibrary\...` nao existe
+nesta maquina — deploy feito so em `C:\...`. Valicacao em jogo com 2 clientes
+reais ainda **a confirmar** (cutover e checklist no plano 02-04).
+
 1. **Compilacao:**
    - `OriCoopDedicatedServer.csproj` compilado com sucesso (.NET 8.0 Release).
    - `OriCoopBepInEx.dll` compilado via `build.ps1` com 23 arquivos de origem (Release, 53.760 bytes).
