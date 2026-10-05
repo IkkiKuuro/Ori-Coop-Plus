@@ -24,6 +24,9 @@ namespace OriCoopBepInEx.UI
                     return;
                 }
 
+                // Inicializa a tela secundária OriCoopMenuScreen com o InventoryManager como base
+                OriCoopMenuScreen.Initialize(__instance);
+
                 // Idempotência: impede inserção duplicada
                 for (int i = 0; i < nav.MenuItems.Count; i++)
                 {
@@ -37,9 +40,6 @@ namespace OriCoopBepInEx.UI
                 {
                     return;
                 }
-
-                // Inicializa a tela secundária OriCoopMenuScreen com o InventoryManager como base
-                OriCoopMenuScreen.Initialize(__instance);
 
                 // Localiza os botões centrais (não-habilidades): "Options" e o botão imediatamente seguinte ("Difficulty" ou "Exit")
                 CleverMenuItem optionsItem = null;
@@ -176,6 +176,44 @@ namespace OriCoopBepInEx.UI
             if (OriCoopMenuScreen.Instance != null)
             {
                 OriCoopMenuScreen.Instance.Open();
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(InventoryManager), "Show")]
+    public static class InventoryShowPatch
+    {
+        public static void Postfix(InventoryManager __instance)
+        {
+            try
+            {
+                if (OriCoopMenuScreen.Instance != null)
+                {
+                    OriCoopMenuScreen.Instance.CloseSubmenuAndRestoreCentralButtons();
+                }
+            }
+            catch (Exception ex)
+            {
+                OriCoopPlugin.LogError("[UI-Hook] Erro no Postfix de InventoryManager.Show: " + ex.Message);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(InventoryManager), "ShowImmediate")]
+    public static class InventoryShowImmediatePatch
+    {
+        public static void Postfix(InventoryManager __instance)
+        {
+            try
+            {
+                if (OriCoopMenuScreen.Instance != null)
+                {
+                    OriCoopMenuScreen.Instance.CloseSubmenuAndRestoreCentralButtons();
+                }
+            }
+            catch (Exception ex)
+            {
+                OriCoopPlugin.LogError("[UI-Hook] Erro no Postfix de InventoryManager.ShowImmediate: " + ex.Message);
             }
         }
     }

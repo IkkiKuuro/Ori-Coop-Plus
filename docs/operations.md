@@ -312,19 +312,44 @@ Use `/coop` sem argumentos para consultar o estado atual.
 | Servidor cheio | reduza conexoes ou inicie com maximo entre 1 e 10 |
 | Cliente LAN nao conecta | confirme o IPv4 `LAN address`, a porta UDP, o firewall do host e se todos estao na mesma rede |
 | `KeyNotFoundException` com a chave `4` ao conectar | substitua o executável pelo build atual; o servidor deve criar e percorrer exatamente os slots configurados |
-| Submenu "Ori Coop" não responde a clique/gamepad e despausa jogo | **Bug conhecido**: `OriCoopMenuScreen` abre mas os itens clonados não processam raycast/foco de entrada, e ao sair ocorre despausa indevida mantendo elementos de UI abertos. Em investigação. |
-| Impossível conectar ao servidor in-game | **Bug conhecido / Ausência de UI de conexão**: Não há tela no jogo para inserir IP/porta do servidor dedicado. A conexão depende de configuração manual no arquivo `com.ikkikuuro.oricoop.cfg`. |
+| Submenu "Ori Coop" não responde a clique/gamepad e despausa jogo | **Resolvido**: O submenu agora é instanciado como filho de `InventoryManager` (evitando suspensão incorreta pelo `SuspensionManager`), `IsActive` e `IsSuspended` são explicitamente configurados, botões clonados possuem `Activated`/`Visible` neutralizados e `BoxCollider` ativos, e a saída via Start/Esc encerra a árvore de menus sem reexibir elementos de inventário com o jogo despausado. |
+| Impossível conectar ao servidor in-game | **Resolvido**: Implementado o diálogo in-game `ServerConnectionDialog` (acessível pelo botão "Configurar Conexao de Servidor" no submenu do pause e pela tecla de atalho **F6**), permitindo inserir Host/IP, Porta UDP, Apelido, conectar/desconectar em tempo real e realizar busca automática de servidores na LAN via sonda broadcast. |
+| Tela vazia ao clicar em "Ori Coop" ou sobreposição de menus ao reabrir pausa | **Resolvido**: `OriCoopMenuScreen.Open()` chamava `InventoryManager.NavigationManager.SetVisible(false)`, acionando o `TransparencyAnimator` que zerava a opacidade de todo o inventário e de seus filhos (tela vazia). Ao reabrir a pausa, `InventoryManager.Show()` restaurava a opacidade para 1, mas o submenu continuava aberto, resultando na sobreposição dos botões centrais vanilla e dos botões do mod. Solução: foi criado o método `SetCentralMenuButtonsVisible(bool)` que oculta cirurgicamente apenas os botões da coluna central, mantendo o anel de habilidades e estatísticas visíveis, e patches em `InventoryManager.Show()` e `ShowImmediate()` garantem que o submenu seja sempre limpo e resetado ao abrir a pausa. |
 
-## Itens ainda a confirmar e Bugs Conhecidos
+## Verificacao da Interface Nativa e Conexao In-Game
 
-- [Bug] Falta de foco/interatividade no submenu `OriCoopMenuScreen` (cliques e gamepad não são consumidos e a saída despausa o jogo no fundo);
-- [Bug/Pendência] Ausência de interface in-game para descoberta ou conexão direta (IP/Porta) ao `OriCoopDedicatedServer`;
+1. **Interatividade e Foco no Submenu Ori Coop:**
+   - Abra o menu de pausa em um save carregado;
+   - Navegue pelo gamepad (D-Pad ou analógico) ou teclado (Setas/Enter) até o botão "Ori Coop" e selecione-o;
+   - Verifique que a tela **não** fica preta/vazia: o anel de habilidades à esquerda e as estatísticas à direita permanecem visíveis, enquanto apenas os botões centrais vanilla dão lugar aos botões do mod e ao cabeçalho de status;
+   - Verifique se o foco visual é imediatamente posicionado no primeiro botão ("Configurar Conexao de Servidor");
+   - Navegue entre todos os itens com o direcional e com o mouse (verifique se os botões destacam no hover e respondem ao clique esquerdo);
+   - Pressione **B** (controle) ou **Esc** ou selecione "Voltar"; certifique-se de que o submenu fecha, os botões centrais vanilla reaparecem sem sobreposição e o foco retorna para o botão "Ori Coop";
+   - Entre novamente no submenu "Ori Coop" e pressione **Start** (controle) ou **Esc**; certifique-se de que todo o menu fecha de forma limpa e o jogo é despausado sem deixar sobreposição visual de inventário;
+   - Pause novamente e verifique que o menu abre no estado padrão com "Continuar", "Opções", "Ori Coop", "Dificuldade" e "Sair", sem botões sobrepostos.
+
+2. **Dialogo de Conexao e Deteccao LAN (F6 / Menu):**
+   - No submenu "Ori Coop", clique em "Configurar Conexao de Servidor" ou pressione **F6** durante o jogo;
+   - Verifique a exibição da janela modal centralizada com estilo visual escuro/ciano e escurecimento do fundo (backdrop);
+   - Inicie o `OriCoopDedicatedServer.exe` localmente (porta 7777);
+   - Clique em **Buscar LAN**; confirme que o servidor local é detectado e o campo de endereço é preenchido com o IP/Host detectado;
+   - Clique em **Conectar**; confirme a atualização do status in-game para `<color=#00ff88>CONECTADO</color>` com atribuição de ID de jogador e contagem de parceiros;
+   - Clique em **Desconectar do Servidor**; confirme o encerramento limpo da sessão de rede sem fechar o jogo.
+
+## Itens Resolvidos
+
+- [Resolvido] Falta de foco/interatividade no submenu `OriCoopMenuScreen` (resolvido com parenting sob `InventoryManager`, `IsActive=true`, `IsSuspended=false`, neutralização de condições e `BoxCollider` nos botões clonados);
+- [Resolvido] Ausência de interface in-game para descoberta ou conexão direta ao `OriCoopDedicatedServer` (resolvido com `ServerConnectionDialog` e sonda UDP de broadcast LAN);
+- [Resolvido] Despausa indevida ao sair do submenu mantendo UI de inventário aberta (resolvido pelo fechamento sincronizado via `MenuScreenManager.HideMenuScreen(false)`);
+- [Resolvido] Tela vazia ao clicar em "Ori Coop" e sobreposição de menus ao reabrir a pausa (resolvido pela eliminação de `NavigationManager.SetVisible(false)`, introdução do `SetCentralMenuButtonsVisible(bool)` e reset via patches em `InventoryManager.Show()` e `ShowImmediate()`).
+
+## Itens ainda a confirmar e Pendencias
+
 - comportamento de `AutoConnect` em todas as cenas;
 - persistencia das opcoes do servidor entre reinicios (o codigo atual as
   redefine ao carregar o modulo);
 - matriz de compatibilidade entre versoes do Ori, Unity e assemblies;
 - cobertura real de sincronizacao de inimigos e entidades em partidas longas;
-- descoberta automatica de servidores na LAN (atualmente o IPv4 e configurado manualmente);
 - aplicacao visual completa de todos os jogadores remotos e sincronizacao de
   inimigos/entidades em partidas longas.
 
