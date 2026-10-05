@@ -40,22 +40,23 @@ Plugin/OriCoopPlugin
 - **Client (Entidades Remotas e Visibilidade):**
   - `RemotePlayerManager`: Cria, atualiza e descarta instâncias de `RemotePlayerPuppet`
     conforme snapshots são recebidos ou jogadores desconectam.
-  - `RemotePuppetFactory`: Clona a hierarquia visual de `Game.Characters.Sein`
-    utilizando isolamento de singletons (`Game.Characters.Sein` e `Game.Characters.Current`),
-    impedindo que o `Awake` ou `OnDestroy` do clone zere a referência global do jogador local.
-    Aplica limpeza por *whitelist*: remove todos os `Collider` (evitando gatilhos e cutscenes
-    falsas), `Rigidbody` e todos os `MonoBehaviour` que não sejam estritamente visuais
-    (`SpriteAnimatorWithTransitions`, `CharacterSpriteMirror`, `RemotePlayerPuppet`,
-    `RemoteVisualController`). Isso previne a execução concorrente de mais de 50 scripts
-    de gameplay nativos do Ori (`SeinLevel`, `SeinDoorHandler`, etc.) no boneco remoto,
-    eliminando quedas brutais de FPS causadas por enxurradas de `NullReferenceException`.
-  - `RemotePlayerPuppet`: Gerencia interpolação de posições e espelhamento, contendo
-    um componente `TextMesh` ("NameTag") flutuante com cor ciano sobre o boneco. Em
-    `LateUpdate()`, a rotação da NameTag é travada em `Quaternion.identity` para que o texto
-    não seja invertido quando o boneco virar para a esquerda.
-  - `RemoteVisualController`: Atua em `LateUpdate()` como watchdog, garantindo que
+  - `RemotePuppetFactory`: Clona a hierarquia visual de `Game.Characters.Sein`.
+    A fonte e temporariamente desativada antes do `Instantiate` para impedir que `Awake()`
+    ou `OnEnable()` sejam disparados no clone. As referencias globais `Game.Characters.Sein` e
+    `Game.Characters.Current` sao estritamente preservadas e restauradas em blocos `try/finally`
+    (com auxilio de `EnsureCameraFollowsLocalPlayer()`) para evitar anulacao da entidade local.
+    A limpeza por *whitelist* elimina filhos sem renderizadores/animadores, desativa imediatamente
+    todos os `Behaviour` restantes e destroi colisores, rigidbodies, audios e MonoBehaviours que
+    nao sejam puramente visuais (`SpriteAnimatorWithTransitions`, `CharacterSpriteMirror`,
+    `RemotePlayerPuppet`, `RemoteVisualController`), prevenindo a execucao concorrente de dezenas
+    de scripts de gameplay nativos e eliminando quedas de FPS causadas por loops de `NullReferenceException`.
+  - `RemotePlayerPuppet`: Gerencia interpolacao de posicoes e espelhamento, contendo
+    um componente `FloatingNameTag` flutuante sobre o boneco. Em `LateUpdate()`, a rotacao da NameTag
+    e travada em `Quaternion.identity` para que o texto nao seja invertido quando o boneco virar para a esquerda.
+  - `RemoteVisualController`: Atua em `LateUpdate()` como watchdog com taxa limitada (2x/s)
+    e cache de propriedades de shader (`Shader.PropertyToID`), garantindo que
     `MeshRenderer.enabled` e `gameObject.activeSelf` permaneçam ativos e que o canal
-    alpha dos materiais não seja zerado por cutscenes ou gatilhos de cenário.
+    alpha dos materiais não seja zerado sem onerar a CPU a cada frame.
   - `AnimationRegistry`: Pré-aquece o catálogo de `TextureAnimationWithTransitions`
     carregados em memória e resolve animações por nome ou hash FNV-1a, oferecendo
     heurísticas de fallback de movimento (`Running`, `Falling`, `Jump`, `Idle`) para

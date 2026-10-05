@@ -12,6 +12,9 @@ namespace OriCoopBepInEx.Client
         private bool _isInitialized;
         private int _playerId;
 
+        private static readonly int ColorPropId = Shader.PropertyToID("_Color");
+        private float _lastWatchdogTime;
+
         public void InitializeHierarchy(int playerId)
         {
             _playerId = playerId;
@@ -34,9 +37,9 @@ namespace OriCoopBepInEx.Client
                 }
 
                 _renderers.Add(r);
-                if (r.material != null)
+                if (r.sharedMaterial != null)
                 {
-                    _materials.Add(r.material);
+                    _materials.Add(r.sharedMaterial);
                 }
             }
 
@@ -50,6 +53,13 @@ namespace OriCoopBepInEx.Client
             {
                 return;
             }
+
+            // Throttle watchdog check to 2x per second to prevent per-frame CPU overhead
+            if (Time.time - _lastWatchdogTime < 0.5f)
+            {
+                return;
+            }
+            _lastWatchdogTime = Time.time;
 
             EnforceVisibility("LateUpdate-Watchdog");
         }
@@ -88,7 +98,7 @@ namespace OriCoopBepInEx.Client
             for (int i = 0; i < _materials.Count; i++)
             {
                 Material mat = _materials[i];
-                if (mat != null && mat.HasProperty("_Color"))
+                if (mat != null && mat.HasProperty(ColorPropId))
                 {
                     Color c = mat.color;
                     if (c.a < 0.95f)

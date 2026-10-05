@@ -236,6 +236,10 @@ namespace OriCoopDedicatedServer.Game
                     {
                         LastKnownPlayerPositions.Remove(pl.Id);
                     }
+                    Packet dcPacket = new Packet();
+                    dcPacket.Write((int)PacketType.DISCONNECT);
+                    dcPacket.Write(pl.Id);
+                    ServerSend.SendToAll(pl.Id, dcPacket);
                     break;
                 }
                 default:

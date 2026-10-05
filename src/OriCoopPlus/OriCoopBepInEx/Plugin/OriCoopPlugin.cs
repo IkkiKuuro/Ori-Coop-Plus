@@ -129,6 +129,7 @@ namespace OriCoopBepInEx.Plugin
                 _network.EntitySyncChanged += OnEntitySyncChanged;
                 _network.PingUpdated += OnPingUpdated;
                 _network.IdentityAssigned += OnIdentityAssigned;
+                _network.PlayerDisconnected += OnPlayerDisconnected;
                 _network.Start();
 
                 Logger.LogInfo(string.Format("Conectando ao servidor Ori Coop em {0}:{1} como '{2}'...", host, port, nick));
@@ -151,6 +152,7 @@ namespace OriCoopBepInEx.Plugin
                     _network.EntitySyncChanged -= OnEntitySyncChanged;
                     _network.PingUpdated -= OnPingUpdated;
                     _network.IdentityAssigned -= OnIdentityAssigned;
+                    _network.PlayerDisconnected -= OnPlayerDisconnected;
                     _network.Dispose();
                 }
                 catch (Exception ex)
@@ -244,6 +246,7 @@ namespace OriCoopBepInEx.Plugin
             _network.EntitySyncChanged += OnEntitySyncChanged;
             _network.PingUpdated += OnPingUpdated;
             _network.IdentityAssigned += OnIdentityAssigned;
+            _network.PlayerDisconnected += OnPlayerDisconnected;
             _network.Start();
 
             _harmony = new Harmony("com.ikkikuuro.oricoop");
@@ -352,6 +355,73 @@ namespace OriCoopBepInEx.Plugin
             }
         }
 
+        private void OnPlayerDisconnected(int playerId)
+        {
+            string nick = null;
+            lock (_remotePlayers)
+            {
+                PlayerSnapshot snap;
+                if (_remotePlayers.TryGetValue(playerId, out snap))
+                {
+                    nick = snap.Nick;
+                }
+                _remotePlayers.Remove(playerId);
+            }
+
+            lock (_mainThreadActions)
+            {
+                _mainThreadActions.Enqueue(delegate
+                {
+                    _remotePlayerManager.RemovePlayer(playerId);
+                    EnsureCameraFollowsLocalPlayer();
+
+                    string displayName = string.IsNullOrEmpty(nick) ? ("Jogador " + playerId) : nick;
+                    Logger.LogInfo(string.Format("[Ori Coop] [-] {0} (ID: {1}) desconectou.", displayName, playerId));
+                    UI.NativeUIHelper.ShowToast(string.Format("[Ori Coop] [-] {0} saiu!", displayName), 3.0f);
+                });
+            }
+        }
+
+        public static void EnsureCameraFollowsLocalPlayer()
+        {
+            try
+            {
+                SeinCharacter sein = Game.Characters.Sein;
+                if (sein == null)
+                {
+                    UnityEngine.GameObject seinObj = UnityEngine.GameObject.Find("Characters/Sein") ?? UnityEngine.GameObject.Find("Sein");
+                    if (seinObj != null)
+                    {
+                        sein = seinObj.GetComponent<SeinCharacter>();
+                        if (sein != null)
+                        {
+                            Game.Characters.Sein = sein;
+                            Game.Characters.Current = sein;
+                        }
+                    }
+                }
+
+                if (sein != null)
+                {
+                    if (Game.Characters.Current == null || (Game.Characters.Current as UnityEngine.Component) != sein)
+                    {
+                        Game.Characters.Current = sein;
+                    }
+
+                    GameplayCamera cam = Game.UI.Cameras.Current;
+                    if (cam != null && (cam.Target == null || cam.Target != sein.transform))
+                    {
+                        cam.Target = sein.transform;
+                        cam.ChangeTargetToCurrentCharacter();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogWarning("EnsureCameraFollowsLocalPlayer exception: " + ex.Message);
+            }
+        }
+
         private void OnGUI()
         {
             if (_enableLegacyFloatingHud == null || !_enableLegacyFloatingHud.Value)
@@ -432,9 +502,19 @@ namespace OriCoopBepInEx.Plugin
             {
                 while (_mainThreadActions.Count > 0)
                 {
-                    _mainThreadActions.Dequeue()();
+                    try
+                    {
+                        _mainThreadActions.Dequeue()();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogWarning("Exception executing main thread action: " + ex.Message);
+                    }
                 }
             }
+
+            // Self-healing watchdog: Ensure Game.Characters.Sein and camera focus are preserved on local player
+            EnsureCameraFollowsLocalPlayer();
 
             if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.T))
             {

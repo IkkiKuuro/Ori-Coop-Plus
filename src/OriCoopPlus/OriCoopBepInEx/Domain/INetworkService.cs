@@ -10,6 +10,7 @@ namespace OriCoopBepInEx.Domain
         event Action<bool> EntitySyncChanged;
         event Action<int> PingUpdated;
         event Action<string, int> IdentityAssigned;
+        event Action<int> PlayerDisconnected;
 
         bool IsConnected { get; }
 

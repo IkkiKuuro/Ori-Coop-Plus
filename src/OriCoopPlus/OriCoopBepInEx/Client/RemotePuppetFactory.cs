@@ -18,27 +18,46 @@ namespace OriCoopBepInEx.Client
                 return null;
             }
 
-            GameObject instance = UnityEngine.Object.Instantiate(s_templatePrefab, initialPosition, Quaternion.identity) as GameObject;
-            if (instance == null)
-            {
-                return null;
-            }
+            SeinCharacter originalSein = Game.Characters.Sein;
+            ICharacter originalCurrent = Game.Characters.Current;
 
-            instance.name = string.Format("RemotePlayer_{0}_{1}", playerId, nickname);
-            RemotePlayerPuppet puppet = instance.GetComponent<RemotePlayerPuppet>() ?? instance.AddComponent<RemotePlayerPuppet>();
-            puppet.Setup(playerId, nickname);
-
+            GameObject instance = null;
             try
             {
-                instance.SetActive(true);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning("[OriCoop] Non-fatal exception activating puppet: " + ex.Message);
-            }
+                instance = UnityEngine.Object.Instantiate(s_templatePrefab, initialPosition, Quaternion.identity) as GameObject;
+                if (instance == null)
+                {
+                    return null;
+                }
 
-            UnityEngine.Object.DontDestroyOnLoad(instance);
-            return puppet;
+                instance.name = string.Format("RemotePlayer_{0}_{1}", playerId, nickname);
+                RemotePlayerPuppet puppet = instance.GetComponent<RemotePlayerPuppet>() ?? instance.AddComponent<RemotePlayerPuppet>();
+                puppet.Setup(playerId, nickname);
+
+                try
+                {
+                    instance.SetActive(true);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning("[OriCoop] Non-fatal exception activating puppet: " + ex.Message);
+                }
+
+                UnityEngine.Object.DontDestroyOnLoad(instance);
+                return puppet;
+            }
+            finally
+            {
+                if (originalSein != null && Game.Characters.Sein != originalSein)
+                {
+                    Game.Characters.Sein = originalSein;
+                }
+                if (originalCurrent != null && Game.Characters.Current != originalCurrent)
+                {
+                    Game.Characters.Current = originalCurrent;
+                }
+                Plugin.OriCoopPlugin.EnsureCameraFollowsLocalPlayer();
+            }
         }
 
         private static void EnsureTemplate()
@@ -65,48 +84,43 @@ namespace OriCoopBepInEx.Client
             SeinCharacter originalSein = Game.Characters.Sein;
             ICharacter originalCurrent = Game.Characters.Current;
 
-            bool wasActive = sein.activeSelf;
-            if (wasActive)
+            try
             {
+                // Temporarily deactivate source object so clone is instantiated inactive,
+                // preventing Awake() or OnEnable() from running on any components during cloning.
+                bool wasActive = sein.activeSelf;
                 sein.SetActive(false);
+                try
+                {
+                    s_templatePrefab = UnityEngine.Object.Instantiate(sein) as GameObject;
+                }
+                finally
+                {
+                    sein.SetActive(wasActive);
+                }
+
+                if (s_templatePrefab == null)
+                {
+                    return;
+                }
+
+                s_templatePrefab.name = "RemotePlayer_Template";
+                s_templatePrefab.SetActive(false);
+                UnityEngine.Object.DontDestroyOnLoad(s_templatePrefab);
+
+                CleanPuppetComponents(s_templatePrefab);
             }
-
-            s_templatePrefab = UnityEngine.Object.Instantiate(sein) as GameObject;
-
-            if (wasActive)
+            finally
             {
-                sein.SetActive(true);
-            }
-
-            if (s_templatePrefab == null)
-            {
-                return;
-            }
-
-            s_templatePrefab.name = "RemotePlayer_Template";
-            s_templatePrefab.SetActive(false);
-            UnityEngine.Object.DontDestroyOnLoad(s_templatePrefab);
-
-            // Restore global singleton references immediately
-            if (originalSein != null)
-            {
-                Game.Characters.Sein = originalSein;
-            }
-            if (originalCurrent != null)
-            {
-                Game.Characters.Current = originalCurrent;
-            }
-
-            CleanPuppetComponents(s_templatePrefab);
-
-            // Re-restore singleton references after cleaning
-            if (originalSein != null)
-            {
-                Game.Characters.Sein = originalSein;
-            }
-            if (originalCurrent != null)
-            {
-                Game.Characters.Current = originalCurrent;
+                if (originalSein != null)
+                {
+                    Game.Characters.Sein = originalSein;
+                }
+                if (originalCurrent != null)
+                {
+                    Game.Characters.Current = originalCurrent;
+                }
+                Plugin.OriCoopPlugin.EnsureCameraFollowsLocalPlayer();
             }
         }
 
@@ -119,7 +133,24 @@ namespace OriCoopBepInEx.Client
 
             RemoteVisualController.StripFrustumOptimizers(root);
 
-            // 1. Destroy child GameObjects that represent gameplay hints, UI meters, or nested skill prefabs
+            // 1. Immediately disable all Behaviours so no unneeded script can ever run Update/FixedUpdate
+            Behaviour[] allBehaviours = root.GetComponentsInChildren<Behaviour>(true);
+            for (int i = 0; i < allBehaviours.Length; i++)
+            {
+                Behaviour b = allBehaviours[i];
+                if (b == null) continue;
+                if (b is SpriteAnimatorWithTransitions ||
+                    b is CharacterSpriteMirror ||
+                    b is RemotePlayerPuppet ||
+                    b is RemoteVisualController)
+                {
+                    continue;
+                }
+                b.enabled = false;
+            }
+
+            // 2. Destroy child GameObjects that contain no renderers or animators
+            // (e.g. gameplay triggers, audio emitters, leaf particle emitters, nested skill prefabs)
             Transform[] children = root.GetComponentsInChildren<Transform>(true);
             for (int i = 0; i < children.Length; i++)
             {
@@ -129,20 +160,15 @@ namespace OriCoopBepInEx.Client
                     continue;
                 }
 
-                string name = t.gameObject.name;
-                if (name.Contains("bentBar") ||
-                    name.Contains("radialEnemyHighlight") ||
-                    name.Contains("PlayerGrab") ||
-                    name.Contains("Hint") ||
-                    name.Contains("Skill") ||
-                    name.Contains("mistErase") ||
-                    name.Contains("lightTrail"))
+                Renderer r = t.GetComponentInChildren<Renderer>();
+                SpriteAnimatorWithTransitions anim = t.GetComponentInChildren<SpriteAnimatorWithTransitions>();
+                if (r == null && anim == null)
                 {
                     UnityEngine.Object.DestroyImmediate(t.gameObject);
                 }
             }
 
-            // 2. Destroy all Colliders so remote puppets do not trigger scene events, triggers, or physics
+            // 3. Destroy all Colliders so remote puppets do not trigger scene events, triggers, or physics
             Collider[] colliders = root.GetComponentsInChildren<Collider>(true);
             for (int i = 0; i < colliders.Length; i++)
             {
@@ -152,7 +178,7 @@ namespace OriCoopBepInEx.Client
                 }
             }
 
-            // 3. Destroy all Rigidbodies
+            // 4. Destroy all Rigidbodies
             Rigidbody[] rbs = root.GetComponentsInChildren<Rigidbody>(true);
             for (int i = 0; i < rbs.Length; i++)
             {
@@ -162,7 +188,7 @@ namespace OriCoopBepInEx.Client
                 }
             }
 
-            // 4. Destroy all AudioSources and AudioListeners
+            // 5. Destroy all AudioSources and AudioListeners
             AudioSource[] audioSources = root.GetComponentsInChildren<AudioSource>(true);
             for (int i = 0; i < audioSources.Length; i++)
             {
@@ -180,36 +206,52 @@ namespace OriCoopBepInEx.Client
                 }
             }
 
-            // 5. Multi-pass whitelist cleanup: destroy all MonoBehaviours except the animation and puppet components
-            for (int pass = 0; pass < 5; pass++)
+            // 6. Destroy all non-whitelisted MonoBehaviours FIRST (to release RequireComponent dependencies)
+            MonoBehaviour[] allScripts = root.GetComponentsInChildren<MonoBehaviour>(true);
+            for (int i = 0; i < allScripts.Length; i++)
             {
-                MonoBehaviour[] behaviours = root.GetComponentsInChildren<MonoBehaviour>(true);
-                int destroyed = 0;
-
-                for (int i = 0; i < behaviours.Length; i++)
+                MonoBehaviour mb = allScripts[i];
+                if (mb == null) continue;
+                if (mb is SpriteAnimatorWithTransitions ||
+                    mb is CharacterSpriteMirror ||
+                    mb is RemotePlayerPuppet ||
+                    mb is RemoteVisualController)
                 {
-                    MonoBehaviour mb = behaviours[i];
-                    if (mb == null)
-                    {
-                        continue;
-                    }
-
-                    string typeName = mb.GetType().Name;
-                    if (typeName == "SpriteAnimatorWithTransitions" ||
-                        typeName == "CharacterSpriteMirror" ||
-                        typeName == "RemotePlayerPuppet" ||
-                        typeName == "RemoteVisualController")
-                    {
-                        continue;
-                    }
-
-                    UnityEngine.Object.DestroyImmediate(mb);
-                    destroyed++;
+                    continue;
                 }
 
-                if (destroyed == 0)
+                try
                 {
-                    break;
+                    UnityEngine.Object.DestroyImmediate(mb);
+                }
+                catch { }
+            }
+
+            // 7. Multi-pass destruction of remaining non-whitelisted components
+            for (int pass = 0; pass < 3; pass++)
+            {
+                Component[] remaining = root.GetComponentsInChildren<Component>(true);
+                for (int i = 0; i < remaining.Length; i++)
+                {
+                    Component c = remaining[i];
+                    if (c == null) continue;
+
+                    if (c is Transform ||
+                        c is Renderer ||
+                        c is MeshFilter ||
+                        c is SpriteAnimatorWithTransitions ||
+                        c is CharacterSpriteMirror ||
+                        c is RemotePlayerPuppet ||
+                        c is RemoteVisualController)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        UnityEngine.Object.DestroyImmediate(c);
+                    }
+                    catch { }
                 }
             }
         }
