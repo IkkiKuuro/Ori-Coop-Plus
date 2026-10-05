@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using OriCoop;
 using OriCoopDedicatedServer.Net.Diagnostics;
 using OriCoopDedicatedServer.Net.Game;
+using OriCoopDedicatedServer.Net.Reliability;
 using OriCoopDedicatedServer.Net.Session;
 using OriCoopDedicatedServer.Net.Transport;
 
@@ -17,16 +18,22 @@ namespace OriCoopDedicatedServer.Net
     /// Orquestracao do novo core (D-13): receive (Channel) -> dispatch
     /// (SessionManager + relay) -> send (UdpTransport). Sem estatico global.
     /// Pacotes originados no servidor usam clientId 0; relay reemite bytes
-    /// originais preservando clientId + seq do remetente.
+    /// originais preservando clientId + seq do remetente. Criticos (D-10)
+    /// usam ACK + retry via AckTracker (250 ms x3); PLAYER_STATE e Ping
+    /// seguem unreliable sem pendencia.
     /// </summary>
     public sealed class NetServerHost
     {
+        private const int ChatPacketId = -5;
+
         private readonly int _port;
         private readonly int _maxPlayers;
         private readonly ILogger _log;
         private readonly UdpTransport _transport;
         private readonly SessionManager _sessions;
         private readonly PlayerStateRelay _relay;
+        private readonly AckTracker _acks = new AckTracker();
+        private Timer _retryTimer = null!;
         private uint _serverSeq;
 
         public NetServerHost(int port, int maxPlayers, ILogger log)
@@ -45,6 +52,8 @@ namespace OriCoopDedicatedServer.Net
             LogBindAddresses();
             _log.Log(ServerLogLevel.Info, "NET2", "Novo core ouvindo na porta " + _port
                 + " (max " + _maxPlayers + " jogadores). Envelope 0x4F43 v2.");
+            // Timer unico de retry (D-10): reavalia pendencias a cada 50 ms.
+            _retryTimer = new Timer(OnRetryTick, null, 50, 50);
             Task receiveTask = _transport.RunReceiveLoopAsync(ct);
             try
             {
@@ -58,6 +67,16 @@ namespace OriCoopDedicatedServer.Net
             }
             finally
             {
+                try
+                {
+                    if (_retryTimer != null)
+                    {
+                        _retryTimer.Dispose();
+                    }
+                }
+                catch (Exception)
+                {
+                }
                 _transport.Dispose();
                 try
                 {
@@ -82,6 +101,18 @@ namespace OriCoopDedicatedServer.Net
                 return;
             }
 
+            // Todo datagrama Reliable recebe SysAck imediato antes do dispatch
+            // (D-10); o remetente usa o ACK para cancelar os proprios retries.
+            if ((header.Flags & NetProtocol.FlagReliable) != 0)
+            {
+                await SendSysAckAsync(datagram.Remote, header.Seq, ct).ConfigureAwait(false);
+            }
+            // ACK piggybacked no header (AckPresent + ackSeq) vale como SysAck.
+            if ((header.Flags & NetProtocol.FlagAckPresent) != 0)
+            {
+                _acks.Complete(datagram.Remote, header.AckSeq);
+            }
+
             switch (header.PacketId)
             {
                 case NetProtocol.MsgHello:
@@ -94,7 +125,12 @@ namespace OriCoopDedicatedServer.Net
                     await HandlePingAsync(datagram.Remote, header, payload, ct).ConfigureAwait(false);
                     break;
                 case NetProtocol.MsgAck:
-                    // Confiabilidade entra no plano 02-02; por ora so registra.
+                    // SysAck 103: payload = uint32 LE com a seq confirmada.
+                    if (payload != null && payload.Length >= 4)
+                    {
+                        uint ackedSeq = BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(0, 4));
+                        _acks.Complete(datagram.Remote, ackedSeq);
+                    }
                     TouchSession(header);
                     break;
                 default:
@@ -184,7 +220,21 @@ namespace OriCoopDedicatedServer.Net
                 return RelayAsync(datagram.Data, sender, ct);
             }
 
-            // Demais pacotes de jogo (teleport/chat/sync) ganham handlers no plano 02-03.
+            // Criticos (D-10): relay imediato dos bytes originais, com retry
+            // por destino ate o ACK (ou 3 tentativas). A Task 3 deste plano
+            // especializa chat (-5) e DISCONNECT (4) com regras de conteudo.
+            if (IsCriticalPacket(header.PacketId))
+            {
+                if (!sender.IsReady)
+                {
+                    _log.Log(ServerLogLevel.Debug, "SESSAO", "Critico " + header.PacketId + " de " + sender.Id + " antes do Confirm (drop)");
+                    return Task.CompletedTask;
+                }
+                return RelayReliableAsync(datagram.Data, sender, header.Seq, ct);
+            }
+
+            // Demais pacotes de jogo (nao-criticos fora PLAYER_STATE) ganham
+            // handlers no plano 02-03.
             _log.Log(ServerLogLevel.Debug, "NET2", "Pacote " + header.PacketId + " de " + sender.Id + " sem handler neste plano (drop)");
             return Task.CompletedTask;
         }
@@ -200,6 +250,128 @@ namespace OriCoopDedicatedServer.Net
                 catch (Exception ex)
                 {
                     _log.Log(ServerLogLevel.Warning, "NET2", "Relay para " + target.Id + " falhou: " + ex.GetType().Name);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Criticos (D-10, lista em <see cref="IsCriticalPacket"/>): chat -5,
+        /// CONFIG_SYNC 16, TELEPORT_REQUEST 15, SYNC_ABILITY 10, SYNC_LEVER 11,
+        /// SYNC_DOOR 12, SYNC_WORLDEVENT 14, SKILL 7, COLOR 6, DISCONNECT 4.
+        /// PLAYER_STATE 18 e Ping 104 nunca geram pendencia (unreliable).
+        /// </summary>
+        private static bool IsCriticalPacket(int packetId)
+        {
+            return packetId == ChatPacketId
+                || packetId == (int)PacketType.CONFIG_SYNC
+                || packetId == (int)PacketType.TELEPORT_REQUEST
+                || packetId == (int)PacketType.SYNC_ABILITY
+                || packetId == (int)PacketType.SYNC_LEVER
+                || packetId == (int)PacketType.SYNC_DOOR
+                || packetId == (int)PacketType.SYNC_WORLDEVENT
+                || packetId == (int)PacketType.SKILL
+                || packetId == (int)PacketType.COLOR
+                || packetId == (int)PacketType.DISCONNECT;
+        }
+
+        /// <summary>
+        /// Relay confiavel: reemite os bytes originais a cada destino IsReady
+        /// (sem agregacao em tick, D-11) e registra pendencia por destino para
+        /// retry de 250 ms ate 3x. O ACK do destino cancela os reenvios.
+        /// </summary>
+        private async Task RelayReliableAsync(byte[] originalDatagram, Session.Session sender, uint seq, CancellationToken ct)
+        {
+            foreach (Session.Session target in _relay.Targets(sender, _sessions.All))
+            {
+                try
+                {
+                    await _transport.SendAsync(originalDatagram, target.EndPoint, ct).ConfigureAwait(false);
+                    _acks.Track(target.EndPoint, seq, originalDatagram, target.Id);
+                }
+                catch (Exception ex)
+                {
+                    _log.Log(ServerLogLevel.Warning, "NET2", "Relay confiavel para " + target.Id + " falhou: " + ex.GetType().Name);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Envio confiavel originado no servidor (clientId 0): codifica com
+        /// flag Reliable, envia e agenda retry ate o ACK do destino.
+        /// </summary>
+        private async Task SendReliableAsync(IPEndPoint remote, int packetId, byte[] payload, int sessionId, CancellationToken ct)
+        {
+            uint seq = NextServerSeq();
+            byte[] datagram;
+            string error;
+            if (!EnvelopeCodec.TryEncode(NetProtocol.FlagReliable, seq, NetProtocol.ServerId, 0, packetId, 0, payload, out datagram, out error))
+            {
+                _log.Log(ServerLogLevel.Error, "NET2", "Encode falhou: " + error);
+                return;
+            }
+            try
+            {
+                await _transport.SendAsync(datagram, remote, ct).ConfigureAwait(false);
+                _acks.Track(remote, seq, datagram, sessionId);
+            }
+            catch (Exception ex)
+            {
+                _log.Log(ServerLogLevel.Warning, "NET2", "Envio confiavel para " + remote + " falhou: " + ex.GetType().Name);
+            }
+        }
+
+        /// <summary>
+        /// SysAck 103 imediato para um datagrama Reliable (antes do dispatch).
+        /// Payload = uint32 LE com a seq confirmada; nunca gera pendencia.
+        /// </summary>
+        private Task SendSysAckAsync(IPEndPoint remote, uint ackedSeq, CancellationToken ct)
+        {
+            byte[] payload = new byte[4];
+            BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(0, 4), ackedSeq);
+            return SendSystemAsync(remote, NetProtocol.ServerId, NetProtocol.MsgAck, payload, ct);
+        }
+
+        private void OnRetryTick(object? state)
+        {
+            List<AckTracker.Pending> expired;
+            List<AckTracker.Pending> due;
+            try
+            {
+                due = _acks.CollectDue(DateTime.UtcNow, out expired);
+            }
+            catch (Exception ex)
+            {
+                _log.Log(ServerLogLevel.Warning, "ACK", "Coleta de retries falhou: " + ex.GetType().Name);
+                return;
+            }
+            for (int i = 0; i < expired.Count; i++)
+            {
+                AckTracker.Pending lost = expired[i];
+                _log.Log(ServerLogLevel.Warning, "ACK", "Sem ACK da sessao " + lost.SessionId
+                    + " para seq " + lost.Seq + " apos " + NetProtocol.MaxRetries
+                    + " retries; desistindo (sessao mantida).");
+            }
+            for (int i = 0; i < due.Count; i++)
+            {
+                AckTracker.Pending retry = due[i];
+                try
+                {
+                    // Fire-and-forget com observacao: o socket e thread-safe e
+                    // o intervalo do timer (50 ms) nao deve bloquear.
+                    Task sendTask = _transport.SendAsync(retry.Datagram, retry.Remote, CancellationToken.None);
+                    sendTask.ContinueWith(delegate (Task t)
+                    {
+                        if (t.IsFaulted)
+                        {
+                            _log.Log(ServerLogLevel.Warning, "ACK", "Retry para sessao "
+                                + retry.SessionId + " seq " + retry.Seq + " falhou: "
+                                + t.Exception.GetType().Name);
+                        }
+                    }, TaskContinuationOptions.OnlyOnFaulted);
+                }
+                catch (Exception ex)
+                {
+                    _log.Log(ServerLogLevel.Warning, "ACK", "Retry para sessao " + retry.SessionId + " falhou: " + ex.GetType().Name);
                 }
             }
         }
