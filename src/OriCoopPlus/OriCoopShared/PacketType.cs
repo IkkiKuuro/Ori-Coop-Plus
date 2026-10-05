@@ -2,9 +2,9 @@ namespace OriCoop
 {
     public enum PacketType
     {
-        // Core packets (matching original WW protocol)
-        POSITION = 1,
-        ANIM = 2,
+        // Core packets (IDs 1-2 removidos no rework de anims; nunca reutilizar)
+        POSITION = 1, // LEGACY_REMOVED
+        ANIM = 2, // LEGACY_REMOVED
         ID = 3,
         DISCONNECT = 4,
         REQUEST_PLAYERS = 5,

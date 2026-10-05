@@ -104,7 +104,11 @@ e `nick`, sem fundir nem inferir nada.
 no passo seguinte do rework (sem compatibilidade retroativa: cliente e
 servidor sempre do mesmo build).
 
-## Fragmentacao POSITION/ANIM (causa raiz do bug #2 — legado em remocao)
+## Fragmentacao POSITION/ANIM (causa raiz do bug #2 — REMOVIDA)
+
+> Removida no rework de sincronia de anims: sender, relay e receptor do
+> fragmentado foram excluídos; só `PLAYER_STATE` (18) trafega posição+anim.
+> IDs 1 e 2 nunca serão reutilizados. Cliente e servidor sempre do mesmo build.
 
 `POSITION` (1) carrega `int playerId`, `Vector3 pos`, `Color RGB (3 bytes)`,
 `bool facingLeft`, `string nick` — mas **nao** carrega velocidade nem nome de

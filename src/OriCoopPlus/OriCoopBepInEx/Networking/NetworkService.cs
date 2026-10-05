@@ -13,8 +13,6 @@ namespace OriCoopBepInEx.Networking
     {
         private const int ConnectPacket = -1;
         private const int WelcomePacket = -1;
-        private const int PositionPacket = (int)PacketType.POSITION;
-        private const int AnimationPacket = (int)PacketType.ANIM;
         private const int ChatPacket = -5;
         private const int NetworkVariablePacket = -3;
         private const int PingPacket = -7;
@@ -28,6 +26,11 @@ namespace OriCoopBepInEx.Networking
         private int _assignedId = -1;
         private string _nickname;
         private long _lastPingSentTicks;
+        private byte _lastSentState = 255;
+        private int _lastSentHash;
+        private Vector3Data _lastSentPos;
+        private long _lastSentTicks;
+        private const long HeartbeatIntervalTicks = TimeSpan.TicksPerMillisecond * 400;
 
         public bool IsConnected
         {
@@ -103,52 +106,55 @@ namespace OriCoopBepInEx.Networking
                 return;
             }
 
-            using (MemoryStream body = new MemoryStream())
-            using (BinaryWriter writer = new BinaryWriter(body))
+            byte stateByte = (byte)snapshot.Animation.State;
+            int stateHash = unchecked((int)snapshot.Animation.AnimNameHash);
+            long nowTicks = DateTime.UtcNow.Ticks;
+            bool stateChanged = stateByte != _lastSentState || stateHash != _lastSentHash;
+            bool posChanged = !SamePosition(snapshot.Position, _lastSentPos);
+            bool heartbeatDue = nowTicks - _lastSentTicks >= HeartbeatIntervalTicks;
+            if (!stateChanged && !posChanged && !heartbeatDue)
             {
-                writer.Write(PositionPacket);
-                writer.Write(snapshot.Position.X);
-                writer.Write(snapshot.Position.Y);
-                writer.Write(snapshot.Position.Z);
-                writer.Write(snapshot.Animation.FacingLeft);
-                SendEnvelope(body.ToArray());
+                return;
+            }
+            _lastSentState = stateByte;
+            _lastSentHash = stateHash;
+            _lastSentPos = snapshot.Position;
+            _lastSentTicks = nowTicks;
 
-                if (!string.IsNullOrEmpty(snapshot.Animation.Name))
+            using (MemoryStream stateBody = new MemoryStream())
+            using (BinaryWriter stateWriter = new BinaryWriter(stateBody))
+            {
+                stateWriter.Write((int)PacketType.PLAYER_STATE);
+                stateWriter.Write(snapshot.Position.X);
+                stateWriter.Write(snapshot.Position.Y);
+                stateWriter.Write(snapshot.Position.Z);
+                stateWriter.Write(stateByte);
+                byte flags = 0;
+                if (snapshot.Animation.FacingLeft)
                 {
-                    body.SetLength(0);
-                    writer.Write(AnimationPacket);
-                    WriteLegacyString(writer, snapshot.Animation.Name);
-                    writer.Flush();
-                    SendEnvelope(body.ToArray());
+                    flags |= 1;
                 }
-
-                using (MemoryStream stateBody = new MemoryStream())
-                using (BinaryWriter stateWriter = new BinaryWriter(stateBody))
+                if (snapshot.Animation.IsGrounded)
                 {
-                    stateWriter.Write((int)PacketType.PLAYER_STATE);
-                    stateWriter.Write(snapshot.Position.X);
-                    stateWriter.Write(snapshot.Position.Y);
-                    stateWriter.Write(snapshot.Position.Z);
-                    stateWriter.Write((byte)snapshot.Animation.State);
-                    byte flags = 0;
-                    if (snapshot.Animation.FacingLeft)
-                    {
-                        flags |= 1;
-                    }
-                    if (snapshot.Animation.IsGrounded)
-                    {
-                        flags |= 2;
-                    }
-                    stateWriter.Write(flags);
-                    stateWriter.Write(unchecked((int)snapshot.Animation.AnimNameHash));
-                    stateWriter.Write(snapshot.Velocity.X);
-                    stateWriter.Write(snapshot.Velocity.Y);
-                    WriteLegacyString(stateWriter, !string.IsNullOrEmpty(snapshot.Nick) ? snapshot.Nick : _nickname);
-                    stateWriter.Flush();
-                    SendEnvelope(stateBody.ToArray());
+                    flags |= 2;
                 }
+                stateWriter.Write(flags);
+                stateWriter.Write(stateHash);
+                stateWriter.Write(snapshot.Velocity.X);
+                stateWriter.Write(snapshot.Velocity.Y);
+                WriteLegacyString(stateWriter, !string.IsNullOrEmpty(snapshot.Nick) ? snapshot.Nick : _nickname);
+                stateWriter.Flush();
+                SendEnvelope(stateBody.ToArray());
             }
 
+        }
+
+        private static bool SamePosition(Vector3Data a, Vector3Data b)
+        {
+            float dx = a.X - b.X;
+            float dy = a.Y - b.Y;
+            float dz = a.Z - b.Z;
+            return dx * dx + dy * dy + dz * dz < 0.0025f;
         }
 
         public void SendTeleportRequest(int targetPlayerId)
@@ -294,26 +300,7 @@ namespace OriCoopBepInEx.Networking
 
                     return;
                 }
-                if (packetId == PositionPacket)
-                {
-                    PlayerSnapshot snapshot = new PlayerSnapshot();
-                    snapshot.PlayerId = reader.ReadInt32();
-                    snapshot.Position = new Vector3Data(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                    reader.ReadByte();
-                    reader.ReadByte();
-                    reader.ReadByte();
-                    snapshot.Animation.FacingLeft = reader.ReadBoolean();
-                    snapshot.Nick = ReadLegacyString(reader);
-                    RaiseSnapshot(snapshot);
-                }
-                else if (packetId == AnimationPacket)
-                {
-                    PlayerSnapshot snapshot = new PlayerSnapshot();
-                    snapshot.PlayerId = reader.ReadInt32();
-                    snapshot.Animation.Name = ReadLegacyString(reader);
-                    RaiseSnapshot(snapshot);
-                }
-                else if (packetId == (int)PacketType.PLAYER_STATE)
+                if (packetId == (int)PacketType.PLAYER_STATE)
                 {
                     PlayerSnapshot snapshot = new PlayerSnapshot();
                     snapshot.PlayerId = reader.ReadInt32();

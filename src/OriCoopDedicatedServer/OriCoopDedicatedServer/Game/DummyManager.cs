@@ -75,14 +75,19 @@ namespace OriCoopDedicatedServer.Game
                 float offsetY = (float)Math.Sin(_timeCounter * 3.0f) * 0.3f;
                 DummyPosition = new Vector3(playerPos.X + offsetX, playerPos.Y + offsetY, playerPos.Z);
 
-                // Broadcast dummy position to all clients
+                // Broadcast dummy como pacote 18 (mesmo layout do PLAYER_STATE;
+                // POSITION fragmentado foi removido no rework de anims).
                 Packet packet = new Packet();
-                packet.Write((int)PacketType.POSITION);
+                packet.Write(18);
                 packet.Write(DummyId);
                 packet.Write(DummyPosition);
-                DummyColor.WritePacket(ref packet);
-                packet.Write(offsetX < 0); // face left if left of player
-                packet.Write(DummyNick);   // Nickname!
+                packet.Write((byte)ActionVisualState.Idle);
+                byte dummyFlags = (byte)(offsetX < 0 ? 1 : 0);
+                packet.Write(dummyFlags);
+                packet.Write(0);
+                packet.Write(0f);
+                packet.Write(0f);
+                packet.Write(DummyNick);
 
                 ServerSend.SendToAll(packet);
             }

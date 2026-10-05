@@ -299,34 +299,7 @@ namespace OriCoopBepInEx.Plugin
         {
             lock (_remotePlayers)
             {
-                // BUG #2/#3: pacotes ANIM chegam sem posicao/nick. Sobrescrever aqui
-                // zerava a posicao no HUD e quebrava FindNearestRemotePlayer (teleporte).
-                PlayerSnapshot existing;
-                bool isAnimOnly = (snapshot.Position.X == 0f && snapshot.Position.Y == 0f && snapshot.Position.Z == 0f)
-                    && string.IsNullOrEmpty(snapshot.Nick) && !string.IsNullOrEmpty(snapshot.Animation.Name);
-                if (isAnimOnly && _remotePlayers.TryGetValue(snapshot.PlayerId, out existing) && existing != null)
-                {
-                    existing.Animation = snapshot.Animation;
-                    existing.Timestamp = snapshot.Timestamp;
-                    snapshot = existing;
-                }
-                else
-                {
-                    if (isAnimOnly)
-                    {
-                        // Sem posicao base ainda: guarda mesmo assim para o manager fundir.
-                        _remotePlayers[snapshot.PlayerId] = snapshot;
-                    }
-                    else
-                    {
-                        if (_remotePlayers.TryGetValue(snapshot.PlayerId, out existing) && existing != null
-                            && !string.IsNullOrEmpty(existing.Animation.Name) && string.IsNullOrEmpty(snapshot.Animation.Name))
-                        {
-                            snapshot.Animation = existing.Animation;
-                        }
-                        _remotePlayers[snapshot.PlayerId] = snapshot;
-                    }
-                }
+                _remotePlayers[snapshot.PlayerId] = snapshot;
             }
 
             lock (_mainThreadActions)

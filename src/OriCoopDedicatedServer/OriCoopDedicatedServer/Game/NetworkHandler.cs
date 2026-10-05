@@ -61,34 +61,6 @@ namespace OriCoopDedicatedServer.Game
                     }
                     break;
                 }
-                case PacketType.POSITION:
-                {
-                    Vector3 pos = packet.ReadVector3();
-                    bool faceLeft = packet.ReadBool();
-
-                    LastKnownPlayerPositions[pl.Id] = pos;
-
-                    Packet packet4 = new Packet();
-                    packet4.Write((int)PacketType.POSITION);
-                    packet4.Write(pl.Id);
-                    packet4.Write(pos);
-                    ServerConfig.GetClientColor(pl.Id).WritePacket(ref packet4);
-                    packet4.Write(faceLeft);
-                    packet4.Write(pl.Nick ?? ("Player " + pl.Id)); // Send nickname!
-
-                    ServerSend.SendToAll(pl.Id, packet4);
-                    break;
-                }
-                case PacketType.ANIM:
-                {
-                    string anim = packet.ReadString();
-                    Packet packet3 = new Packet();
-                    packet3.Write((int)PacketType.ANIM);
-                    packet3.Write(pl.Id);
-                    packet3.Write(anim);
-                    ServerSend.SendToAll(pl.Id, packet3);
-                    break;
-                }
                 case (PacketType)18:
                 {
                     Vector3 statePos = packet.ReadVector3();
