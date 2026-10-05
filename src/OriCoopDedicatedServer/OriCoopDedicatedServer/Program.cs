@@ -13,6 +13,7 @@ internal static class Program
 		int maxplayers = 4;
 		int port = 7777;
 		bool autoStart = false;
+		bool net2 = false;
 		int positionalArgument = 0;
 
 		if (args != null && args.Length > 0)
@@ -21,6 +22,11 @@ internal static class Program
 			for (int i = 0; i < args.Length; i++)
 			{
 				string arg = args[i].ToLower();
+				if (arg == "--net2" || arg == "-net2" || arg == "/net2")
+				{
+					net2 = true;
+					continue;
+				}
 				if (arg == "--auto" || arg == "-auto" || arg == "/auto")
 				{
 					continue;
@@ -49,7 +55,7 @@ internal static class Program
 			}
 		}
 
-		if (!autoStart)
+		if (!autoStart && !net2)
 		{
 			Logger.Info("SERVER", "ENTER MAX PLAYERS [DEFAULT 4 MAX 10] (Pressione ENTER para padrao 4)");
 			string line1 = Console.ReadLine();
@@ -64,6 +70,12 @@ internal static class Program
 			{
 				port = ((result2 > 9999) ? 9999 : ((result2 <= 0) ? 7777 : result2));
 			}
+		}
+
+		if (net2)
+		{
+			RunNet2Host(maxplayers, port);
+			return;
 		}
 
 		Server.Start(maxplayers, port);
@@ -81,6 +93,34 @@ internal static class Program
 			{
 				System.Threading.Thread.Sleep(100);
 			}
+		}
+	}
+
+	private static void RunNet2Host(int maxplayers, int port)
+	{
+		var log = new Net.Diagnostics.FileConsoleLogger("net2-server.log");
+		var host = new Net.NetServerHost(port, maxplayers, log);
+		using (var cts = new System.Threading.CancellationTokenSource())
+		{
+			System.Console.CancelKeyPress += (sender, e) =>
+			{
+				e.Cancel = true;
+				try { cts.Cancel(); } catch { }
+			};
+			System.Threading.Tasks.Task runTask = host.RunAsync(cts.Token);
+			log.Log(Net.Diagnostics.ServerLogLevel.Info, "NET2", "Digite stop para encerrar.");
+			while (!cts.IsCancellationRequested)
+			{
+				string raw = System.Console.ReadLine() ?? "stop";
+				string cmd = raw.Trim().ToLowerInvariant();
+				if (cmd == "stop" || cmd == "quit" || cmd == "exit")
+				{
+					try { cts.Cancel(); } catch { }
+					break;
+				}
+			}
+			try { runTask.GetAwaiter().GetResult(); }
+			catch (System.OperationCanceledException) { }
 		}
 	}
 
