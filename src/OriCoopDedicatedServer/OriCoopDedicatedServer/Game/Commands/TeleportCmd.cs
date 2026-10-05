@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using OriCoop;
 using OriCoopDedicatedServer.Core;
@@ -29,32 +29,50 @@ namespace OriCoopDedicatedServer.Game.Commands
             }
 
             Client source = FindClient(arguments[0]);
-            Client destination = FindClient(arguments[1]);
-            if (source == null || destination == null)
+            if (source == null)
             {
-                response = "Jogador nÃ£o encontrado. Use o nick exato ou o ID.";
+                response = "Jogador de origem não encontrado. Use o nick exato ou o ID.";
                 return false;
             }
 
-            if (source.Id == destination.Id)
-            {
-                response = "A origem e o destino precisam ser jogadores diferentes.";
-                return false;
-            }
+            Vector3 position;
+            string destNick;
 
-            if (!NetworkHandler.LastKnownPlayerPositions.TryGetValue(destination.Id, out Vector3 position))
+            if (DummyManager.IsActive && (arguments[1] == DummyManager.DummyId.ToString() || string.Equals(arguments[1], DummyManager.DummyNick, StringComparison.OrdinalIgnoreCase)))
             {
-                response = $"Ainda nÃ£o existe uma posiÃ§Ã£o recebida para {destination.Nick}.";
-                return false;
+                position = DummyManager.DummyPosition;
+                destNick = DummyManager.DummyNick;
+            }
+            else
+            {
+                Client destination = FindClient(arguments[1]);
+                if (destination == null)
+                {
+                    response = "Jogador de destino não encontrado. Use o nick exato ou o ID.";
+                    return false;
+                }
+
+                if (source.Id == destination.Id)
+                {
+                    response = "A origem e o destino precisam ser jogadores diferentes.";
+                    return false;
+                }
+
+                if (!NetworkHandler.LastKnownPlayerPositions.TryGetValue(destination.Id, out position))
+                {
+                    response = $"Ainda não existe uma posição recebida para {destination.Nick}.";
+                    return false;
+                }
+                destNick = destination.Nick ?? ("Jogador " + destination.Id);
             }
 
             Packet packet = new Packet((int)PacketType.TELEPORT_REQUEST);
             packet.Write(position);
-            packet.Write(destination.Nick ?? ("Jogador " + destination.Id));
+            packet.Write(destNick);
             source.udp.SendData(packet);
-            ServerSend.SendChatMessage("<color=cyan>" + source.Nick + "</color> foi teleportado ate <color=cyan>" + destination.Nick + "</color>.");
+            ServerSend.SendChatMessage("<color=cyan>" + source.Nick + "</color> foi teleportado ate <color=cyan>" + destNick + "</color>.");
 
-            response = $"Teleportando {source.Nick} atÃ© {destination.Nick}.";
+            response = $"Teleportando {source.Nick} até {destNick}.";
             return true;
         }
 

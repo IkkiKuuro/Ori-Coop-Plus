@@ -110,8 +110,7 @@ namespace OriCoopBepInEx.Networking
                 {
                     body.SetLength(0);
                     writer.Write(AnimationPacket);
-                    writer.Write(snapshot.Animation.Name.Length);
-                    writer.Write(System.Text.Encoding.ASCII.GetBytes(snapshot.Animation.Name));
+                    WriteLegacyString(writer, snapshot.Animation.Name);
                     writer.Flush();
                     SendEnvelope(body.ToArray());
                 }
@@ -317,7 +316,7 @@ namespace OriCoopBepInEx.Networking
             using (BinaryWriter writer = new BinaryWriter(body))
             {
                 writer.Write(-1);
-                writer.Write(_nickname);
+                WriteLegacyString(writer, _nickname);
                 writer.Flush();
                 SendEnvelope(body.ToArray());
             }
@@ -330,6 +329,18 @@ namespace OriCoopBepInEx.Networking
             {
                 handler(snapshot);
             }
+        }
+
+        private static void WriteLegacyString(BinaryWriter writer, string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                writer.Write((int)0);
+                return;
+            }
+            byte[] bytes = System.Text.Encoding.ASCII.GetBytes(value);
+            writer.Write(bytes.Length);
+            writer.Write(bytes);
         }
 
         private static string ReadLegacyString(BinaryReader reader)

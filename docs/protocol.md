@@ -47,8 +47,17 @@ protocolo; cada cliente deve configurar manualmente o IPv4 do host.
 O ingresso usa duas etapas próprias: o cliente envia `-1` para solicitar um
 slot; o servidor responde `-1`, com uma mensagem de boas-vindas e o ID; então
 o cliente envia um envelope autenticado pelo ID contendo o pacote `-1` e seu
-`string nickname`. Só depois dessa confirmação o servidor marca o cliente
-como pronto e aceita snapshots. O fluxo é exclusivo do transporte UDP do Ori Coop Plus.
+`string nickname` (codificado no formato de rede: `int32 length` em 4 bytes little-endian
+seguido pelos bytes ASCII, compatível com `Packet.ReadString()` e `WriteLegacyString`).
+Só depois dessa confirmação o servidor marca o cliente como pronto e aceita snapshots.
+O fluxo é exclusivo do transporte UDP do Ori Coop Plus.
+
+Strings em todos os pacotes devem obedecer ao formato de 4 bytes de tamanho (`int32`)
+seguido por bytes ASCII, evitando o prefixo LEB128 padrão de `BinaryWriter.Write(string)`.
+
+Quando o bot virtual de testes está ativo (`dummy`), o servidor aceita requisições
+de `TELEPORT_REQUEST` direcionadas ao ID `999` (`DummyManager.DummyId`), respondendo
+com a posição flutuante atual do bot e o nick `Bot_Amigo`.
 
 ## Configuracao distribuida
 

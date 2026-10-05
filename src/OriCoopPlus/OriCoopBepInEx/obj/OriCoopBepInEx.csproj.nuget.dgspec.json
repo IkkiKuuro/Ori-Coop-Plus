@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\WW_Launcher\\src\\OriCoopPlus\\OriCoopBepInEx\\OriCoopBepInEx.csproj": {}
+    "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\Ori-Coop-Plus\\src\\OriCoopPlus\\OriCoopBepInEx\\OriCoopBepInEx.csproj": {}
   },
   "projects": {
-    "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\WW_Launcher\\src\\OriCoopPlus\\OriCoopBepInEx\\OriCoopBepInEx.csproj": {
+    "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\Ori-Coop-Plus\\src\\OriCoopPlus\\OriCoopBepInEx\\OriCoopBepInEx.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\WW_Launcher\\src\\OriCoopPlus\\OriCoopBepInEx\\OriCoopBepInEx.csproj",
+        "projectUniqueName": "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\Ori-Coop-Plus\\src\\OriCoopPlus\\OriCoopBepInEx\\OriCoopBepInEx.csproj",
         "projectName": "OriCoopBepInEx",
-        "projectPath": "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\WW_Launcher\\src\\OriCoopPlus\\OriCoopBepInEx\\OriCoopBepInEx.csproj",
+        "projectPath": "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\Ori-Coop-Plus\\src\\OriCoopPlus\\OriCoopBepInEx\\OriCoopBepInEx.csproj",
         "packagesPath": "C:\\Users\\irani\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\WW_Launcher\\src\\OriCoopPlus\\OriCoopBepInEx\\obj\\",
+        "outputPath": "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\Ori-Coop-Plus\\src\\OriCoopPlus\\OriCoopBepInEx\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\irani\\AppData\\Roaming\\NuGet\\NuGet.Config"

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using OriCoopDedicatedServer.Core.API;
 
@@ -42,7 +42,24 @@ public static class ServerHandle
 
 	public static void ClientDoneMessage(Client client, Packet packet)
 	{
-		string text = packet.ReadString();
+		string text = null;
+		try
+		{
+			if (packet != null && packet.UnreadLength() >= 4)
+			{
+				text = packet.ReadString();
+			}
+		}
+		catch (Exception ex)
+		{
+			Logger.Warning("SERVER", $"Could not read player nickname from {client.Address}: {ex.Message}");
+		}
+
+		if (string.IsNullOrEmpty(text))
+		{
+			text = "Player_" + client.Id;
+		}
+
 		Logger.Info("SERVER", $"{client.Address} connected successfully and is new player: {text}");
 		client.IsReady = true;
 		client.Nick = text;
