@@ -1,4 +1,4 @@
-﻿# WW Launcher
+# WW Launcher
 
 Um sistema para criar multiplayer em jogos single-player feitos com Unity.
 
@@ -150,12 +150,11 @@ instalacao, execute o `OriCoopDedicatedServer.exe` diretamente usando os passos
 acima.
 
 O servidor escuta em todas as interfaces IPv4 e exibe no console as linhas
-`LAN address: <IP>:<porta>`. Para clientes em outros computadores da mesma
-rede, use um desses IPv4s no campo `Host` de
-`BepInEx\config\com.ikkikuuro.oricoop.cfg` e mantenha `Port = 7777`.
-Libere trafego UDP de entrada nessa porta no firewall do computador host.
-Nao ha descoberta automatica de servidores; o IPv4 precisa ser informado
-manualmente.
+`LAN address: <IP>:<porta>`. É possível conectar e alterar o IP/porta diretamente
+pelo jogo através do diálogo **F6** (ou pelo submenu de pausa), que também conta
+com detecção automática via botão **Buscar LAN**. Como alternativa, o IPv4 pode
+ser configurado no arquivo `BepInEx\config\com.ikkikuuro.oricoop.cfg`.
+Libere trafego UDP de entrada na porta 7777 no firewall do computador host.
 
 ## 4. Entrar pelo jogo
 
@@ -164,27 +163,15 @@ manualmente.
    ser testado no menu ou durante o prologo com a Naru.
 3. O plugin deve carregar automaticamente a partir de `BepInEx\plugins`.
 4. Confirme `Ori Coop BepInEx` no `BepInEx\LogOutput.log`.
-5. O IP e a porta sao configurados em
-   `BepInEx\config\com.ikkikuuro.oricoop.cfg`. Para um servidor no mesmo computador,
-   use:
-
-   ```text
-   IP: 127.0.0.1
-   Porta: 7777
-   ```
-
-6. Carregue um save controlavel para disparar o patch de `SeinCharacter`.
-7. Para testar com outro computador, use o IP do computador que esta
-   executando o servidor e libere a porta `7777` no firewall.
-
-O plugin BepInEx fornece uma HUD própria no canto superior esquerdo, com nick,
-coordenadas e ping dos jogadores conhecidos. O atalho `T` e o comando `/tp`
-usam o pacote `TELEPORT_REQUEST`; a atualização de câmera e cenas carregadas
-após o teleporte ainda está **a confirmar**.
-
-Por seguranca, todas as opcoes cooperativas iniciam desligadas a cada
-inicializacao do servidor. Para usar um recurso, ative-o explicitamente pelos
-comandos do servidor.
+5. Durante o jogo, pressione **Esc** ou **Start** e selecione o botão **Ori Coop**
+   no menu de pausa (ou pressione **F6** diretamente):
+   - Clique em **Configurar Conexao de Servidor**;
+   - Clique em **Buscar LAN** para autodetectar um servidor ativo na rede local ou
+     digite o IP/Porta desejado;
+   - Clique em **Conectar**.
+6. O status de conexão e a lista de parceiros serão atualizados em tempo real.
+7. O atalho `T` teleporta para o parceiro mais próximo, e o submenu "Ori Coop"
+   permite ressincronizar puppets, alternar exibição de HP do parceiro e logs.
 
 ## 5. Comandos do servidor
 

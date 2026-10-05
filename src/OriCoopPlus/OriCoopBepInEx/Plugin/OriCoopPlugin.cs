@@ -6,6 +6,7 @@ using HarmonyLib;
 using OriCoopBepInEx.Client;
 using OriCoopBepInEx.Domain;
 using OriCoopBepInEx.Networking;
+using OriCoopBepInEx.UI;
 using UnityEngine;
 
 namespace OriCoopBepInEx.Plugin
@@ -31,6 +32,42 @@ namespace OriCoopBepInEx.Plugin
         private GUIStyle _hudBox;
         private GUIStyle _hudText;
         private GUIStyle _hudHeader;
+
+        public static void EnqueueMainThread(Action action)
+        {
+            if (Instance != null && action != null)
+            {
+                lock (Instance._mainThreadActions)
+                {
+                    Instance._mainThreadActions.Enqueue(action);
+                }
+            }
+        }
+
+        public string ServerHost
+        {
+            get { return _serverHost != null ? _serverHost.Value : "127.0.0.1"; }
+        }
+
+        public int ServerPort
+        {
+            get { return _serverPort != null ? _serverPort.Value : 7777; }
+        }
+
+        public string Nickname
+        {
+            get { return _nickname != null ? _nickname.Value : "Ori_Player"; }
+        }
+
+        public int AssignedPlayerId
+        {
+            get { return _playerId != null ? _playerId.Value : -1; }
+        }
+
+        public bool IsConnected
+        {
+            get { return _network != null && AssignedPlayerId >= 0; }
+        }
 
         public int CurrentPing
         {
@@ -64,6 +101,78 @@ namespace OriCoopBepInEx.Plugin
         public static void LogError(string msg)
         {
             if (Instance != null) Instance.Logger.LogError(msg);
+        }
+
+        public void Connect(string host, int port, string nick)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(host)) host = "127.0.0.1";
+                if (port < 1 || port > 65535) port = 7777;
+                if (string.IsNullOrEmpty(nick)) nick = "Ori_Player";
+
+                Disconnect();
+
+                _serverHost.Value = host;
+                _serverPort.Value = port;
+                _nickname.Value = nick;
+                _playerId.Value = -1;
+                Config.Save();
+
+                _localNick = nick;
+                _pingMs = -1;
+
+                _network = new NetworkService(host, port, -1, nick);
+                _network.PlayerSnapshotReceived += OnPlayerSnapshotReceived;
+                _network.TeleportRequested += OnTeleportRequested;
+                _network.ChatMessageReceived += OnChatMessageReceived;
+                _network.EntitySyncChanged += OnEntitySyncChanged;
+                _network.PingUpdated += OnPingUpdated;
+                _network.IdentityAssigned += OnIdentityAssigned;
+                _network.Start();
+
+                Logger.LogInfo(string.Format("Conectando ao servidor Ori Coop em {0}:{1} como '{2}'...", host, port, nick));
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("Falha ao iniciar conexao com servidor: " + ex.Message);
+            }
+        }
+
+        public void Disconnect()
+        {
+            if (_network != null)
+            {
+                try
+                {
+                    _network.PlayerSnapshotReceived -= OnPlayerSnapshotReceived;
+                    _network.TeleportRequested -= OnTeleportRequested;
+                    _network.ChatMessageReceived -= OnChatMessageReceived;
+                    _network.EntitySyncChanged -= OnEntitySyncChanged;
+                    _network.PingUpdated -= OnPingUpdated;
+                    _network.IdentityAssigned -= OnIdentityAssigned;
+                    _network.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning("Excecao ao fechar rede anterior: " + ex.Message);
+                }
+                _network = null;
+            }
+
+            lock (_remotePlayers)
+            {
+                _remotePlayers.Clear();
+            }
+
+            if (_remotePlayerManager != null)
+            {
+                _remotePlayerManager.ClearAll();
+            }
+
+            _pingMs = -1;
+            _playerId.Value = -1;
+            Logger.LogInfo("Conexao de rede desconectada.");
         }
 
         public void TeleportToNearestPartner()
@@ -104,6 +213,8 @@ namespace OriCoopBepInEx.Plugin
             _nickname = Config.Bind("Network", "Nickname", "Ori_Player", "Name shown to other players.");
             _enableLegacyFloatingHud = Config.Bind("UI", "EnableLegacyFloatingHud", false, "Habilita o HUD flutuante legado (desativado por padrao em favor da UI nativa no menu de pausa).");
 
+            ServerConnectionDialog.Initialize();
+
             _network = new NetworkService(_serverHost.Value, _serverPort.Value, _playerId.Value, _nickname.Value);
             _network.PlayerSnapshotReceived += OnPlayerSnapshotReceived;
             _network.TeleportRequested += OnTeleportRequested;
@@ -120,7 +231,7 @@ namespace OriCoopBepInEx.Plugin
 
         public void Publish(PlayerSnapshot snapshot)
         {
-            if (snapshot != null)
+            if (snapshot != null && _network != null)
             {
                 snapshot.PlayerId = _playerId.Value;
                 _localPosition = snapshot.Position;
@@ -278,13 +389,13 @@ namespace OriCoopBepInEx.Plugin
             if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.T))
             {
                 int targetId = FindNearestRemotePlayer();
-                if (targetId >= 0)
+                if (targetId >= 0 && _network != null)
                 {
                     _network.SendTeleportRequest(targetId);
                 }
                 else
                 {
-                    Logger.LogWarning("No remote player is available for teleport.");
+                    Logger.LogWarning("Nenhum parceiro remoto disponivel para teleporte.");
                 }
             }
         }
@@ -317,20 +428,7 @@ namespace OriCoopBepInEx.Plugin
             {
                 _harmony.UnpatchSelf();
             }
-            if (_remotePlayerManager != null)
-            {
-                _remotePlayerManager.ClearAll();
-            }
-            if (_network != null)
-            {
-                _network.PlayerSnapshotReceived -= OnPlayerSnapshotReceived;
-                _network.TeleportRequested -= OnTeleportRequested;
-                _network.ChatMessageReceived -= OnChatMessageReceived;
-                _network.EntitySyncChanged -= OnEntitySyncChanged;
-                _network.PingUpdated -= OnPingUpdated;
-                _network.IdentityAssigned -= OnIdentityAssigned;
-                _network.Dispose();
-            }
+            Disconnect();
             Instance = null;
         }
     }

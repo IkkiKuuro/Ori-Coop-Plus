@@ -45,6 +45,33 @@ namespace OriCoopBepInEx.UI
 
             // Desacopla qualquer ação nativa existente no botão clonado
             item.Pressed = null;
+            item.Activated = null; // Desativa condições pré-existentes para garantir que get_IsActivated retorne true
+            item.Visible = null;   // Desativa condições pré-existentes para garantir que get_IsVisible retorne true
+            item.Transform = cloneObj.transform;
+
+            if (sourceButton != null && (sourceButton.Size.x > 0.1f || sourceButton.Size.y > 0.1f))
+            {
+                item.Size = sourceButton.Size;
+                item.Center = sourceButton.Center;
+            }
+            else
+            {
+                item.Size = new Vector2(4.5f, 0.7f);
+                item.Center = Vector2.zero;
+            }
+
+            // Garante BoxCollider para suporte a raycast/cursor de mouse
+            BoxCollider col = cloneObj.GetComponent<BoxCollider>();
+            if (col == null)
+            {
+                col = cloneObj.AddComponent<BoxCollider>();
+            }
+            col.size = new Vector3(item.Size.x > 0.5f ? item.Size.x : 4.5f, item.Size.y > 0.2f ? item.Size.y : 0.7f, 0.2f);
+            col.center = new Vector3(item.Center.x, item.Center.y, 0f);
+            col.isTrigger = true;
+
+            cloneObj.layer = sourceButton.gameObject.layer;
+
             if (onPressed != null)
             {
                 item.PressedCallback += onPressed;
