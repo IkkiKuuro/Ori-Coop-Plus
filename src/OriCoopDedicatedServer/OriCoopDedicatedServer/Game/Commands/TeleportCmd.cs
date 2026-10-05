@@ -12,7 +12,7 @@ namespace OriCoopDedicatedServer.Game.Commands
     {
         public string Command => "tp";
         public string[] Aliases => new[] { "teleport" };
-        public string Description => "Teleporta um jogador atÃ© outro (/tp <origem> <destino>)";
+        public string Description => "Teleporta um jogador ate outro (/tp <origem> <destino>)";
 
         public bool Execute(List<string> arguments, out string response)
         {

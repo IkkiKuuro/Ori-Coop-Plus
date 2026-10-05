@@ -11,8 +11,27 @@ namespace OriCoopDedicatedServer.Game.Commands
 
         public bool Execute(List<string> arguments, out string response)
         {
-            ServerConfig.ClientColors = !ServerConfig.ClientColors;
-            response = $"SET USE CLIENT COLORS TO: {ServerConfig.ClientColors}";
+            if (arguments.Count >= 1)
+            {
+                string arg = arguments[0].ToLower();
+                if (arg == "on" || arg == "true" || arg == "1" || arg == "sim")
+                {
+                    ServerConfig.ClientColors = true;
+                }
+                else if (arg == "off" || arg == "false" || arg == "0" || arg == "nao")
+                {
+                    ServerConfig.ClientColors = false;
+                }
+                else
+                {
+                    ServerConfig.ClientColors = !ServerConfig.ClientColors;
+                }
+            }
+            else
+            {
+                ServerConfig.ClientColors = !ServerConfig.ClientColors;
+            }
+            response = $"Cores de clientes: {(ServerConfig.ClientColors ? "ATIVADO" : "DESATIVADO")}";
             return true;
         }
     }

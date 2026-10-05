@@ -39,12 +39,12 @@ save controlável nos dois. Ligar `Diagnostics/AnimVerbose=true` em
 
 1. Parado: tráfego cai para heartbeat (~2.5 pacotes/s por jogador — observar
    `[ANIM]` com verbose); movimento envia na hora (< 100 ms percebido).
-2. `/dummy`: bot `Bot_Amigo` aparece parado em Idle; `/dummy` de novo remove e
-   a câmera volta ao jogador.
-3. `/dummy anim on`: bot performa o ciclo de 12 estados (2.5 s cada, log
-   `[DUMMY-ANIM]` no console do servidor) — cada estado mostra a pose
-   correspondente no puppet; `/dummy anim <estado>` trava um estado;
-   `/dummy anim off` volta ao Idle parado; `/dummy status` mostra estado atual.
+2. `/dummy`: bot `Bot_Amigo` aparece ao seu lado em modo eco — repete suas
+   anims com atraso variável de 20–150 ms (espelho para teste de sincronia);
+   `/dummy` de novo remove e a câmera volta ao jogador.
+3. `/dummy echo off` volta ao Idle parado; `/dummy anim on` performa o ciclo
+   roteirizado de 12 estados (validação do catálogo); `/dummy anim <estado>`
+   trava um estado; `/dummy status` mostra modo e estado atual.
 3. Desconectar/reconectar um cliente: puppet some e respawna no lugar certo.
 4. **Passa se:** regressão OK — `T` teleporta, `/tp`, chat, cores, `CONFIG_SYNC`
    (`/coop`) continuam funcionando.

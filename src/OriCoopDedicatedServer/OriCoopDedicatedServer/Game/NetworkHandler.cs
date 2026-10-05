@@ -12,6 +12,19 @@ namespace OriCoopDedicatedServer.Game
         public static Dictionary<int, Vector3> LastKnownPlayerPositions = new Dictionary<int, Vector3>();
         public static HashSet<int> UnlockedAbilities = new HashSet<int>();
 
+        public struct LastRemoteState
+        {
+            public Vector3 Pos;
+            public byte State;
+            public byte Flags;
+            public int AnimHash;
+            public float SpeedX;
+            public float SpeedY;
+            public DateTime ReceivedAt;
+        }
+
+        public static Dictionary<int, LastRemoteState> LastKnownStates = new Dictionary<int, LastRemoteState>();
+
         public static void OnPlayerJoin(Client pl)
         {
             if (!ServerConfig.ClientColors)
@@ -39,7 +52,7 @@ namespace OriCoopDedicatedServer.Game
                     abPacket.Write(abilityId);
                     pl.Send(abPacket);
                 }
-                Logger.Info(pl.Id.ToString(), $"Sincronizadas {UnlockedAbilities.Count} habilidades jÃ¡ desbloqueadas para o novo jogador.");
+                Logger.Info(pl.Id.ToString(), $"Sincronizadas {UnlockedAbilities.Count} habilidades ja desbloqueadas para o novo jogador.");
             }
         }
 
@@ -71,6 +84,16 @@ namespace OriCoopDedicatedServer.Game
                     float stateSpeedY = packet.ReadFloat();
 
                     LastKnownPlayerPositions[pl.Id] = statePos;
+                    LastKnownStates[pl.Id] = new LastRemoteState
+                    {
+                        Pos = statePos,
+                        State = state,
+                        Flags = stateFlags,
+                        AnimHash = stateAnimHash,
+                        SpeedX = stateSpeedX,
+                        SpeedY = stateSpeedY,
+                        ReceivedAt = DateTime.UtcNow,
+                    };
 
                     Packet statePacket = new Packet();
                     statePacket.Write(18);

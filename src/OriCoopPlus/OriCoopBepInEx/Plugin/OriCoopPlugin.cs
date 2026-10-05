@@ -314,6 +314,8 @@ namespace OriCoopBepInEx.Plugin
 
         private void OnTeleportRequested(Vector3Data position, string destination)
         {
+            Logger.LogInfo(string.Format("Teleporte recebido: destino={0} pos=({1:F1},{2:F1},{3:F1})",
+                destination, position.X, position.Y, position.Z));
             lock (_mainThreadActions)
             {
                 _mainThreadActions.Enqueue(delegate
@@ -325,7 +327,7 @@ namespace OriCoopBepInEx.Plugin
                     }
                     if (sein == null)
                     {
-                        Logger.LogWarning("Teleport received, but the local Sein object was not found.");
+                        Logger.LogWarning("Teleport recebido, mas o objeto Sein local nao foi encontrado.");
                         return;
                     }
 
@@ -367,6 +369,10 @@ namespace OriCoopBepInEx.Plugin
 
                     EnsureCameraFollowsLocalPlayer();
 
+                    _teleportExpect = position;
+                    _teleportExpectAt = UnityEngine.Time.time;
+                    Logger.LogInfo(string.Format("Teleporte aplicado em ({0:F1},{1:F1},{2:F1}); verificando fixacao em 0.5 s.",
+                        position.X, position.Y, position.Z));
                     Logger.LogMessage("<color=cyan>SERVER</color>: Teleported to " + destination + ".");
                     UI.NativeUIHelper.ShowToast("[Ori Coop] Teleportado ate " + destination + "!", 3.0f);
                 });
@@ -588,6 +594,9 @@ namespace OriCoopBepInEx.Plugin
             return texture;
         }
 
+        private Vector3Data? _teleportExpect;
+        private float _teleportExpectAt;
+
         private void Update()
         {
             lock (_mainThreadActions)
@@ -602,6 +611,38 @@ namespace OriCoopBepInEx.Plugin
                     {
                         Logger.LogWarning("Exception executing main thread action: " + ex.Message);
                     }
+                }
+            }
+
+            if (_teleportExpect.HasValue && UnityEngine.Time.time - _teleportExpectAt > 0.5f)
+            {
+                Vector3Data expected = _teleportExpect.Value;
+                _teleportExpect = null;
+                try
+                {
+                    SeinCharacter sein = Game.Characters.Sein;
+                    if (sein != null)
+                    {
+                        UnityEngine.Vector3 p = sein.transform.position;
+                        float dx = p.x - expected.X;
+                        float dy = p.y - expected.Y;
+                        float dz = p.z - expected.Z;
+                        float dist = (float)System.Math.Sqrt(dx * dx + dy * dy + dz * dz);
+                        if (dist > 1.5f)
+                        {
+                            Logger.LogWarning(string.Format(
+                                "Teleporte REVERTIDO pela fisica: esperado=({0:F1},{1:F1},{2:F1}) atual=({3:F1},{4:F1},{5:F1}) dist={6:F1}",
+                                expected.X, expected.Y, expected.Z, p.x, p.y, p.z, dist));
+                        }
+                        else
+                        {
+                            Logger.LogInfo("Teleporte fixado com sucesso.");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning("Falha ao verificar teleporte: " + ex.Message);
                 }
             }
 

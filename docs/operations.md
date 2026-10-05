@@ -247,10 +247,10 @@ O jogador se conecta exclusivamente ao executável
 | Comando | Funcao |
 | --- | --- |
 | `/coop` | mostra/configura `tp`, `abilities`, `story`, `world`, `doors` e `names` |
-| `/tp <origem> <destino>` | teleporta a origem ate o destino; alias `/teleport` |
+| `/tp <origem> <destino>` | teleporta a origem ate o destino; alias `/teleport`; com log de diagnóstico no cliente (`Teleporte recebido/aplicado/fixado`) |
 | `/clientcolors` | alterna cores de clientes; aliases `cc`, `clientc`, `ccolors` |
 | `/entitysync` | alterna sincronizacao de entidades; aliases `es`, `sync` |
-| `/dummy` | controla o bot de teste; aliases `bot`, `testbot`; `anim [on\|off\|<estado>]` ativa o modo espelho que performa os 12 estados para validar anims do puppet |
+| `/dummy` | controla o bot de teste; aliases `bot`, `testbot`, `fakeplayer`, `fakepl`, `fp`; `echo [on\|off]` espelha suas anims com ping 20-150 ms, `anim [on\|off\|<estado>]` performa ciclo roteirizado para validar anims do puppet |
 | `/fakeplayer` | alterna o jogador falso avancado; aliases `fakepl`, `fp` |
 
 Exemplos:

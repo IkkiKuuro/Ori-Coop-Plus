@@ -14,10 +14,10 @@ namespace OriCoopDedicatedServer.Game.Commands
         {
             if (arguments.Count == 0)
             {
-                response = "\n=== Ori Coop Plus - ConfiguraÃ§Ãµes Atuais ===" +
+                response = "\n=== Ori Coop Plus - Configuracoes Atuais ===" +
                     $"\n [1] Teleporte (/coop tp): {(ServerConfig.AllowTeleport ? "ATIVADO" : "DESATIVADO")}" +
                     $"\n [2] Compartilhar Habilidades (/coop abilities): {(ServerConfig.ShareAbilities ? "ATIVADO" : "DESATIVADO")}" +
-                    $"\n [3] Apenas Habilidades de HistÃ³ria (/coop story): {(ServerConfig.ShareStoryOnly ? "ATIVADO" : "DESATIVADO")}" +
+                    $"\n [3] Apenas Habilidades de Historia (/coop story): {(ServerConfig.ShareStoryOnly ? "ATIVADO" : "DESATIVADO")}" +
                     $"\n [4] Eventos do Mundo (/coop world): {(ServerConfig.ShareWorldEvents ? "ATIVADO" : "DESATIVADO")}" +
                     $"\n [5] Portas e Alavancas (/coop doors): {(ServerConfig.ShareDoorsAndLevers ? "ATIVADO" : "DESATIVADO")}" +
                     $"\n [6] Nomes Flutuantes (/coop names): {(ServerConfig.ShowNicknames ? "ATIVADO" : "DESATIVADO")}" +
@@ -54,7 +54,7 @@ namespace OriCoopDedicatedServer.Game.Commands
                 case "story":
                 case "storyonly":
                     ServerConfig.ShareStoryOnly = targetState ?? !ServerConfig.ShareStoryOnly;
-                    response = $"Apenas Habilidades de HistÃ³ria configurado para: {(ServerConfig.ShareStoryOnly ? "ATIVADO" : "DESATIVADO")}";
+                    response = $"Apenas Habilidades de Historia configurado para: {(ServerConfig.ShareStoryOnly ? "ATIVADO" : "DESATIVADO")}";
                     return true;
 
                 case "world":
@@ -80,7 +80,7 @@ namespace OriCoopDedicatedServer.Game.Commands
                     return true;
 
                 default:
-                    response = "OpÃ§Ã£o invÃ¡lida. Use: tp, abilities, story, world, doors, names";
+                    response = "Opcao invalida. Use: tp, abilities, story, world, doors, names";
                     return false;
             }
         }

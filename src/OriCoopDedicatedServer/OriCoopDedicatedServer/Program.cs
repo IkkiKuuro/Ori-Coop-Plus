@@ -9,6 +9,7 @@ internal static class Program
 {
 	private static void Main(string[] args)
 	{
+		try { Console.OutputEncoding = System.Text.Encoding.UTF8; } catch { }
 		int maxplayers = 4;
 		int port = 7777;
 		bool autoStart = false;
@@ -50,14 +51,14 @@ internal static class Program
 
 		if (!autoStart)
 		{
-			Logger.Info("SERVER", "ENTER MAX PLAYERS [DEFAULT 4 MAX 10] (Pressione ENTER para padrÃ£o 4)");
+			Logger.Info("SERVER", "ENTER MAX PLAYERS [DEFAULT 4 MAX 10] (Pressione ENTER para padrao 4)");
 			string line1 = Console.ReadLine();
 			if (!string.IsNullOrEmpty(line1) && int.TryParse(line1, out var result))
 			{
 				maxplayers = ((result > 10) ? 10 : ((result <= 0) ? 1 : result));
 			}
 
-			Logger.Info("SERVER", "ENTER SERVER PORT [DEFAULT 7777 MAX 65535] (Pressione ENTER para padrÃ£o 7777)");
+			Logger.Info("SERVER", "ENTER SERVER PORT [DEFAULT 7777 MAX 65535] (Pressione ENTER para padrao 7777)");
 			string line2 = Console.ReadLine();
 			if (!string.IsNullOrEmpty(line2) && int.TryParse(line2, out var result2))
 			{

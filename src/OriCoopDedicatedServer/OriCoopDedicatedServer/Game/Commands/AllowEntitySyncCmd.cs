@@ -11,8 +11,27 @@ namespace OriCoopDedicatedServer.Game.Commands
 
         public bool Execute(List<string> arguments, out string response)
         {
-            ServerConfig.EntitySync = !ServerConfig.EntitySync;
-            response = $"SET USE ENTITY SYNC TO: {ServerConfig.EntitySync}";
+            if (arguments.Count >= 1)
+            {
+                string arg = arguments[0].ToLower();
+                if (arg == "on" || arg == "true" || arg == "1" || arg == "sim")
+                {
+                    ServerConfig.EntitySync = true;
+                }
+                else if (arg == "off" || arg == "false" || arg == "0" || arg == "nao")
+                {
+                    ServerConfig.EntitySync = false;
+                }
+                else
+                {
+                    ServerConfig.EntitySync = !ServerConfig.EntitySync;
+                }
+            }
+            else
+            {
+                ServerConfig.EntitySync = !ServerConfig.EntitySync;
+            }
+            response = $"Sincronizacao de entidades: {(ServerConfig.EntitySync ? "ATIVADO" : "DESATIVADO")}";
             return true;
         }
     }

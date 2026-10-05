@@ -30,14 +30,13 @@ namespace OriCoopDedicatedServer.Game
             Info("==========================================");
             Info(" Ori Coop Plus Server Module CARREGADO!");
             Info(" Recursos ativos: Teleporte, Habilidades, Mundo, Nomes.");
-            Info(" Digite /coop para ver as opÃ§Ãµes ou /dummy para bot de testes.");
+            Info(" Digite /coop para ver as opcoes ou /dummy para bot de testes.");
             Info("==========================================");
         }
 
         private void RegisterCommands()
         {
             CommandProcessor.RegisterCommand(new DummyCmd());
-            CommandProcessor.RegisterCommand(new FakePlayerCmd());
             CommandProcessor.RegisterCommand(new CoopConfigCmd());
             CommandProcessor.RegisterCommand(new TeleportCmd());
             CommandProcessor.RegisterCommand(new AllowCustomColorsCmd());

@@ -7,8 +7,8 @@ namespace OriCoopDedicatedServer.Game.Commands
     public class DummyCmd : ConsoleCommand
     {
         public string Command => "dummy";
-        public string[] Aliases => new string[] { "bot", "testbot" };
-        public string Description => "Control the Coop Test Dummy Bot (/dummy [spawn|despawn|anim|status|ability|lever|door])";
+        public string[] Aliases => new string[] { "bot", "testbot", "fakeplayer", "fakepl", "fp" };
+        public string Description => "Control the Coop Test Dummy Bot (/dummy [spawn|despawn|echo|anim|status|ability|lever|door])";
 
         public bool Execute(List<string> arguments, out string response)
         {
@@ -37,8 +37,35 @@ namespace OriCoopDedicatedServer.Game.Commands
                     return true;
 
                 case "status":
-                    response = $"Dummy Active: {DummyManager.IsActive}, Pos: ({DummyManager.DummyPosition.X:F1}, {DummyManager.DummyPosition.Y:F1}, {DummyManager.DummyPosition.Z:F1}), Anim: {DummyManager.CurrentAnimStateName()}";
+                    response = $"Dummy Active: {DummyManager.IsActive}, Pos: ({DummyManager.DummyPosition.X:F1}, {DummyManager.DummyPosition.Y:F1}, {DummyManager.DummyPosition.Z:F1}), Modo: {DummyManager.CurrentModeName()}";
                     return true;
+
+                case "echo":
+                case "espelho":
+                    if (arguments.Count >= 2)
+                    {
+                        string echoArg = arguments[1].ToLower();
+                        if (echoArg == "off" || echoArg == "stop")
+                        {
+                            DummyManager.SetEchoMode(false);
+                            response = "Dummy modo eco DESATIVADO (parado em Idle).";
+                            return true;
+                        }
+                        if (echoArg == "on" || echoArg == "start")
+                        {
+                            DummyManager.SetEchoMode(true);
+                            response = "Dummy modo eco ATIVADO — espelha suas anims com ping 20-150 ms.";
+                            return true;
+                        }
+                    }
+                    else
+                    {
+                        DummyManager.SetEchoMode(!DummyManager.EchoEnabled);
+                        response = $"Dummy modo eco: {(DummyManager.EchoEnabled ? "ATIVADO" : "DESATIVADO")}.";
+                        return true;
+                    }
+                    response = "Uso: /dummy echo [on|off]";
+                    return false;
 
                 case "anim":
                 case "mirror":
@@ -98,7 +125,7 @@ namespace OriCoopDedicatedServer.Game.Commands
                     return true;
 
                 default:
-                    response = "Subcomandos disponíveis: spawn, despawn, anim [on|off|<estado>], status, ability <nome>, lever <left/right>, door";
+                    response = "Subcomandos: spawn, despawn, echo [on|off], anim [on|off|<estado>], status, ability <nome>, lever <left/right>, door";
                     return false;
             }
         }

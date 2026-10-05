@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 3,
   "targets": {
     "net8.0": {}
   },
@@ -8,19 +8,19 @@
     "net8.0": []
   },
   "packageFolders": {
-    "C:\\Users\\irani\\.nuget\\packages\\": {}
+    "C:\\Users\\raiso\\.nuget\\packages\\": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\Ori-Coop-Plus\\src\\OriCoopDedicatedServer\\OriCoopDedicatedServer.Core\\OriCoopDedicatedServer.Core.csproj",
+      "projectUniqueName": "C:\\Users\\raiso\\Documents\\GitHub\\Ori-Coop-Plus\\src\\OriCoopDedicatedServer\\OriCoopDedicatedServer.Core\\OriCoopDedicatedServer.Core.csproj",
       "projectName": "OriCoopDedicatedServer.Core",
-      "projectPath": "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\Ori-Coop-Plus\\src\\OriCoopDedicatedServer\\OriCoopDedicatedServer.Core\\OriCoopDedicatedServer.Core.csproj",
-      "packagesPath": "C:\\Users\\irani\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\irani\\OneDrive\\Documentos\\GitHub\\Ori-Coop-Plus\\src\\OriCoopDedicatedServer\\OriCoopDedicatedServer.Core\\obj\\",
+      "projectPath": "C:\\Users\\raiso\\Documents\\GitHub\\Ori-Coop-Plus\\src\\OriCoopDedicatedServer\\OriCoopDedicatedServer.Core\\OriCoopDedicatedServer.Core.csproj",
+      "packagesPath": "C:\\Users\\raiso\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\raiso\\Documents\\GitHub\\Ori-Coop-Plus\\src\\OriCoopDedicatedServer\\OriCoopDedicatedServer.Core\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "C:\\Users\\irani\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        "C:\\Users\\raiso\\AppData\\Roaming\\NuGet\\NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net8.0"
@@ -30,7 +30,6 @@
       },
       "frameworks": {
         "net8.0": {
-          "framework": "net8.0",
           "targetAlias": "net8.0",
           "projectReferences": {}
         }
@@ -44,12 +43,10 @@
         "enableAudit": "true",
         "auditLevel": "low",
         "auditMode": "direct"
-      },
-      "SdkAnalysisLevel": "10.0.400"
+      }
     },
     "frameworks": {
       "net8.0": {
-        "framework": "net8.0",
         "targetAlias": "net8.0",
         "imports": [
           "net461",
@@ -62,26 +59,12 @@
         ],
         "assetTargetFallback": true,
         "warn": true,
-        "downloadDependencies": [
-          {
-            "name": "Microsoft.AspNetCore.App.Ref",
-            "version": "[8.0.31, 8.0.31]"
-          },
-          {
-            "name": "Microsoft.NETCore.App.Ref",
-            "version": "[8.0.31, 8.0.31]"
-          },
-          {
-            "name": "Microsoft.WindowsDesktop.App.Ref",
-            "version": "[8.0.31, 8.0.31]"
-          }
-        ],
         "frameworkReferences": {
           "Microsoft.NETCore.App": {
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.401/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.425/PortableRuntimeIdentifierGraph.json"
       }
     }
   }
