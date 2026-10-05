@@ -24,6 +24,13 @@ namespace OriCoopDedicatedServer.Net.Session
 
         public uint LastSentSeq { get; set; }
 
+        /// <summary>
+        /// Contador de varreduras do sweeper sem datagrama (D-07). Com o
+        /// sweeper atual baseado em tempo (LastSeenUtc vs 10 s), permanece
+        /// em zero; preservado para diagnostico futuro.
+        /// </summary>
+        public int MissedSweeps { get; set; }
+
         public string Nickname { get; set; }
 
         public Session()

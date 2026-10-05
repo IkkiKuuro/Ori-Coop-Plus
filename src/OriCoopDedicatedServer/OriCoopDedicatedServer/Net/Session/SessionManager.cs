@@ -53,6 +53,73 @@ namespace OriCoopDedicatedServer.Net.Session
         }
 
         /// <summary>
+        /// Validacao pos-handshake (D-08): sessao existe, token do header
+        /// confere e endpoint e identico ao fixado no Hello. Divergencia de
+        /// token ou endpoint descarta o datagrama sem atualizar LastSeen;
+        /// troca de IP/porta (NAT) exige novo Hello com clientId -1.
+        /// </summary>
+        public bool ValidatePacket(int clientId, uint token, IPEndPoint remote, out Session session, out string reason)
+        {
+            session = null;
+            reason = string.Empty;
+            Session found;
+            if (!_sessions.TryGetValue(clientId, out found) || found == null)
+            {
+                reason = "sessao desconhecida (" + clientId + ")";
+                return false;
+            }
+            if (found.Token != token)
+            {
+                reason = "token divergente na sessao " + clientId;
+                return false;
+            }
+            if (remote == null || !found.EndPoint.Address.Equals(remote.Address) || found.EndPoint.Port != remote.Port)
+            {
+                reason = "endpoint divergente na sessao " + clientId + " (fixo " + found.EndPoint + ", recebido " + remote + ")";
+                return false;
+            }
+            session = found;
+            return true;
+        }
+
+        /// <summary>
+        /// Remove a sessao sem broadcast (o host decide o aviso aos demais).
+        /// </summary>
+        public bool Remove(int clientId, out Session removed)
+        {
+            return _sessions.TryRemove(clientId, out removed);
+        }
+
+        /// <summary>
+        /// Sweeper de timeout (D-07): remove sessoes com mais de
+        /// <paramref name="timeoutMs"/> ms sem datagrama valido e as devolve
+        /// para o host transmitir DISCONNECT. Reconexao e sempre novo Hello
+        /// com novo ID (IDs nunca reutilizados no run).
+        /// </summary>
+        public List<Session> SweepExpired(int timeoutMs)
+        {
+            var removed = new List<Session>();
+            DateTime now = DateTime.UtcNow;
+            foreach (KeyValuePair<int, Session> pair in _sessions)
+            {
+                Session candidate = pair.Value;
+                if (candidate == null)
+                {
+                    continue;
+                }
+                if ((now - candidate.LastSeenUtc).TotalMilliseconds > timeoutMs)
+                {
+                    Session taken;
+                    if (_sessions.TryRemove(pair.Key, out taken) && taken != null)
+                    {
+                        removed.Add(taken);
+                    }
+                }
+            }
+            return removed;
+        }
+
+        /// <summary>
         /// Hello: clientId deve ser -1 e token 0; payload = protoVer byte + nick
         /// (int32-length + ASCII, fallback Player_ID quando vazio). Retorna a
         /// sessao criada (ou existente para o mesmo endpoint) e o payload do
@@ -85,7 +152,8 @@ namespace OriCoopDedicatedServer.Net.Session
 
             if (_sessions.Count >= _maxPlayers)
             {
-                rejectReason = "servidor cheio (" + _sessions.Count + "/" + _maxPlayers + ")";
+                rejectReason = "SERVER_FULL: servidor cheio (" + _sessions.Count + "/" + _maxPlayers + ")";
+                _log.Log(ServerLogLevel.Warning, "SESSAO", "Hello de " + remote + " recusado: " + rejectReason);
                 return false;
             }
 
@@ -108,9 +176,11 @@ namespace OriCoopDedicatedServer.Net.Session
         }
 
         /// <summary>
-        /// Confirm: marca IsReady=true somente com token correto (D-06/D-08 base).
+        /// Confirm: marca IsReady=true somente com token correto e mesmo
+        /// endpoint fixado no Hello (D-06/D-08). Endpoint divergente exige
+        /// novo handshake e nao toca na sessao.
         /// </summary>
-        public bool HandleConfirm(int clientId, uint token, out Session session, out string rejectReason)
+        public bool HandleConfirm(int clientId, uint token, IPEndPoint remote, out Session session, out string rejectReason)
         {
             session = null;
             rejectReason = string.Empty;
@@ -123,6 +193,11 @@ namespace OriCoopDedicatedServer.Net.Session
             if (found.Token != token)
             {
                 rejectReason = "token invalido para sessao " + clientId + "; refaca o handshake";
+                return false;
+            }
+            if (remote == null || !found.EndPoint.Address.Equals(remote.Address) || found.EndPoint.Port != remote.Port)
+            {
+                rejectReason = "endpoint divergente na sessao " + clientId + "; refaca o handshake do novo endpoint";
                 return false;
             }
             found.IsReady = true;

@@ -34,6 +34,7 @@ namespace OriCoopDedicatedServer.Net
         private readonly PlayerStateRelay _relay;
         private readonly AckTracker _acks = new AckTracker();
         private Timer _retryTimer = null!;
+        private Timer _sweepTimer = null!;
         private uint _serverSeq;
 
         public NetServerHost(int port, int maxPlayers, ILogger log)
@@ -54,6 +55,8 @@ namespace OriCoopDedicatedServer.Net
                 + " (max " + _maxPlayers + " jogadores). Envelope 0x4F43 v2.");
             // Timer unico de retry (D-10): reavalia pendencias a cada 50 ms.
             _retryTimer = new Timer(OnRetryTick, null, 50, 50);
+            // Sweeper de timeout (D-07): varre sessoes silenciosas a cada 1 s.
+            _sweepTimer = new Timer(OnSweepTick, null, 1000, 1000);
             Task receiveTask = _transport.RunReceiveLoopAsync(ct);
             try
             {
@@ -72,6 +75,10 @@ namespace OriCoopDedicatedServer.Net
                     if (_retryTimer != null)
                     {
                         _retryTimer.Dispose();
+                    }
+                    if (_sweepTimer != null)
+                    {
+                        _sweepTimer.Dispose();
                     }
                 }
                 catch (Exception)
@@ -131,7 +138,7 @@ namespace OriCoopDedicatedServer.Net
                         uint ackedSeq = BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(0, 4));
                         _acks.Complete(datagram.Remote, ackedSeq);
                     }
-                    TouchSession(header);
+                    TouchSession(datagram.Remote, header);
                     break;
                 default:
                     await HandleGamePacketAsync(datagram, header, ct).ConfigureAwait(false);
@@ -169,7 +176,7 @@ namespace OriCoopDedicatedServer.Net
             }
             Session.Session session;
             string rejectReason;
-            if (!_sessions.HandleConfirm(header.ClientId, header.Token, out session, out rejectReason))
+            if (!_sessions.HandleConfirm(header.ClientId, header.Token, remote, out session, out rejectReason))
             {
                 _log.Log(ServerLogLevel.Warning, "NET2", "Confirm recusado de " + remote + ": " + rejectReason);
                 await SendRejectAsync(remote, rejectReason, ct).ConfigureAwait(false);
@@ -181,8 +188,16 @@ namespace OriCoopDedicatedServer.Net
 
         private async Task HandlePingAsync(IPEndPoint remote, NetEnvelope header, byte[] payload, CancellationToken ct)
         {
-            TouchSession(header);
+            Session.Session session;
+            string reason;
+            if (!_sessions.ValidatePacket(header.ClientId, header.Token, remote, out session, out reason))
+            {
+                _log.Log(ServerLogLevel.Warning, "NET2", "Ping descartado de " + remote + ": " + reason);
+                return;
+            }
+            _sessions.Touch(session);
             // Pong = eco stateless do payload (sendTicks do cliente, D-12).
+            // Unreliable: nunca gera pendencia.
             await SendSystemAsync(remote, NetProtocol.ServerId, NetProtocol.MsgPong, payload, ct).ConfigureAwait(false);
         }
 
@@ -194,17 +209,18 @@ namespace OriCoopDedicatedServer.Net
                 return Task.CompletedTask;
             }
             Session.Session sender;
-            if (!_sessions.TryGet(header.ClientId, out sender))
+            string validationReason;
+            if (!_sessions.ValidatePacket(header.ClientId, header.Token, datagram.Remote, out sender, out validationReason))
             {
-                _log.Log(ServerLogLevel.Warning, "NET2", "Pacote " + header.PacketId + " de sessao desconhecida " + header.ClientId + " (drop)");
-                return Task.CompletedTask;
-            }
-            if (sender.Token != header.Token)
-            {
-                _log.Log(ServerLogLevel.Warning, "NET2", "Token invalido na sessao " + header.ClientId + " (drop)");
+                _log.Log(ServerLogLevel.Warning, "NET2", "Pacote " + header.PacketId + " descartado: " + validationReason);
                 return Task.CompletedTask;
             }
             _sessions.Touch(sender);
+
+            if (header.PacketId == (int)PacketType.DISCONNECT)
+            {
+                return HandleDisconnectAsync(sender, ct);
+            }
 
             if (header.PacketId == (int)PacketType.PLAYER_STATE)
             {
@@ -254,6 +270,74 @@ namespace OriCoopDedicatedServer.Net
             }
         }
 
+        /// <summary>
+        /// DISCONNECT do proprio cliente (D-07/D-10): remove a sessao e
+        /// avisa os restantes com DISCONNECT confiavel. Payload de aviso =
+        /// marcador int 4 + disconnectedId int (lido pelo cliente new-core).
+        /// </summary>
+        private async Task HandleDisconnectAsync(Session.Session sender, CancellationToken ct)
+        {
+            Session.Session removed;
+            if (!_sessions.Remove(sender.Id, out removed))
+            {
+                return;
+            }
+            _acks.PurgeFor(sender.EndPoint);
+            _log.Log(ServerLogLevel.Info, "SESSAO", "ID " + sender.Id + " (" + sender.Nickname + ") desconectou");
+            await BroadcastDisconnectAsync(sender.Id, ct).ConfigureAwait(false);
+        }
+
+        private async Task BroadcastDisconnectAsync(int disconnectedId, CancellationToken ct)
+        {
+            byte[] payload = new byte[8];
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, 4), (int)PacketType.DISCONNECT);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(4, 4), disconnectedId);
+            foreach (Session.Session target in _sessions.All)
+            {
+                if (!target.IsReady)
+                {
+                    continue;
+                }
+                await SendReliableAsync(target.EndPoint, (int)PacketType.DISCONNECT, payload, target.Id, ct).ConfigureAwait(false);
+            }
+        }
+
+        private void OnSweepTick(object? state)
+        {
+            List<Session.Session> expired;
+            try
+            {
+                expired = _sessions.SweepExpired(NetProtocol.SessionTimeoutMs);
+            }
+            catch (Exception ex)
+            {
+                _log.Log(ServerLogLevel.Warning, "SESSAO", "Sweeper falhou: " + ex.GetType().Name);
+                return;
+            }
+            for (int i = 0; i < expired.Count; i++)
+            {
+                Session.Session gone = expired[i];
+                _acks.PurgeFor(gone.EndPoint);
+                _log.Log(ServerLogLevel.Info, "SESSAO", "ID " + gone.Id + " (" + gone.Nickname
+                    + ") removido apos " + NetProtocol.SessionTimeoutMs + " ms sem datagrama");
+                try
+                {
+                    // Fire-and-forget observado: aviso confiavel aos restantes.
+                    BroadcastDisconnectAsync(gone.Id, CancellationToken.None).ContinueWith(delegate (Task t)
+                    {
+                        if (t.IsFaulted)
+                        {
+                            _log.Log(ServerLogLevel.Warning, "SESSAO", "Aviso de saida de " + gone.Id
+                                + " falhou: " + t.Exception.GetType().Name);
+                        }
+                    }, TaskContinuationOptions.OnlyOnFaulted);
+                }
+                catch (Exception ex)
+                {
+                    _log.Log(ServerLogLevel.Warning, "SESSAO", "Aviso de saida de " + gone.Id + " falhou: " + ex.GetType().Name);
+                }
+            }
+        }
         /// <summary>
         /// Criticos (D-10, lista em <see cref="IsCriticalPacket"/>): chat -5,
         /// CONFIG_SYNC 16, TELEPORT_REQUEST 15, SYNC_ABILITY 10, SYNC_LEVER 11,
@@ -376,15 +460,14 @@ namespace OriCoopDedicatedServer.Net
             }
         }
 
-        private void TouchSession(NetEnvelope header)
+        private void TouchSession(IPEndPoint remote, NetEnvelope header)
         {
             Session.Session session;
-            if (header.ClientId != NetProtocol.PreHandshakeId && _sessions.TryGet(header.ClientId, out session))
+            string reason;
+            if (header.ClientId != NetProtocol.PreHandshakeId
+                && _sessions.ValidatePacket(header.ClientId, header.Token, remote, out session, out reason))
             {
-                if (session.Token == header.Token)
-                {
-                    _sessions.Touch(session);
-                }
+                _sessions.Touch(session);
             }
         }
 
