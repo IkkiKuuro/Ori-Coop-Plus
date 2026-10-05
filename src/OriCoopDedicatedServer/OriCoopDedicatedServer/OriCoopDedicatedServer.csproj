@@ -8,11 +8,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
-  <!-- Cutover 02-04 (D-14): Core antigo fora do build. Os arquivos legados
-       (Game/ do path antigo + projeto OriCoopDedicatedServer.Core) permanecem
-       no disco como referencia, mas nao compilam mais neste exe. -->
+  <!-- Servidor novo (cutover 02-04): sem dependencia do Core legado,
+       removido em 2026-10-05 junto com Game/ do path antigo. -->
   <ItemGroup>
-    <Compile Remove="Game/**/*.cs" />
     <Compile Include="..\..\OriCoopPlus\OriCoopShared\*.cs" Link="Shared\%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

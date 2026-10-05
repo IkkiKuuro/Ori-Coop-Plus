@@ -25,10 +25,9 @@
 | `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Net/Diagnostics/` | `ILogger` + `FileConsoleLogger` (console + `Logs/server.log` com niveis) |
 | `src/OriCoopDedicatedServer/SmokeProbe/` | validacao automatizada do protocolo (`--test all`, `SMOKE_OK`) |
 
-Legado fora do build (fica no disco como referencia, nao compila no exe):
-`src/OriCoopDedicatedServer/OriCoopDedicatedServer.Core/` (transporte, sessao
-e comandos pre-rewrite) e `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Game/`
-(path antigo: `Server`, `NetworkHandler`, `DummyManager`, comandos `*Cmd`).
+Legado removido em 2026-10-05: `OriCoopDedicatedServer.Core/` e
+`OriCoopDedicatedServer/Game/` (path antigo) foram excluidos; ver
+`operations.md`. Nao recriar `Server.cs`/`Client.cs`/`Packet.cs` legados.
 
 ## Fontes de catalogo
 

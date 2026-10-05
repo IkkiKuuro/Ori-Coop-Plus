@@ -55,8 +55,8 @@ pacotes NuGet `Microsoft.Net.Compilers.Toolset` (Roslyn) e
 `Microsoft.NETCore.App.Ref` (assemblies de referencia), extrair e compilar
 com `dotnet <toolset>/tasks/netcore/bincore/csc.dll /nostdlib+` referenciando
 `ref/net8.0/*.dll`. Com o SDK instalado (caso atual), prefira o `dotnet build`
-da secao Build acima. Nota: o `OriCoopDedicatedServer.Core.dll` antigo nao e
-mais gerado (Core fora do build desde o cutover 02-04).
+da secao Build acima. Nota: o `OriCoopDedicatedServer.Core` foi excluido do
+repositorio em 2026-10-05 e nao e mais gerado.
 
 1. Cliente: `build.ps1` funciona normalmente, pois usa `csc.exe` do
    .NET Framework (limitado a C# 5 — nao usar interpolacao `$""`, `?.`,
@@ -78,9 +78,9 @@ Com `<ORI_DIR>` apontando para a pasta do jogo:
 <ORI_DIR>\Server\OriCoopDedicatedServer.runtimeconfig.json
 ```
 
-O `OriCoopDedicatedServer.Core.dll` antigo nao faz mais parte da instalacao
-(Core fora do build desde o cutover 02-04; pode ser removido do `Server\` se
-ainda existir de builds anteriores). O servidor grava `serverconfig.json`
+O `OriCoopDedicatedServer.Core.dll` antigo foi removido do repositorio em
+2026-10-05 e nao faz mais parte da instalacao (remova do `Server\` se ainda
+existir de builds anteriores). O servidor grava `serverconfig.json`
 (opcoes persistentes) e `Logs\server.log` (niveis Debug/Info/Warning/Error)
 ao lado do exe.
 
@@ -442,8 +442,7 @@ de 8 bools com leitura tolerante (`ConfigSyncReceived` com 8 valores +
 wrap-safe por remetente; snapshots enfileirados pelo jogo e drenados na
 thread de rede (nenhum envio em `FixedUpdate`); `Reject` 106 reseta para
 re-handshake; sem branches legados. Servidor: `Program` sempre `ServerBoot`
-(Core antigo fora do build, sem `ProjectReference`; arquivos legados ficam no
-disco como referencia), console via `CommandRegistry`, log em `Logs/server.log`
+(sem `ProjectReference` ao Core; Core excluido em 2026-10-05), console via `CommandRegistry`, log em `Logs/server.log`
 + console com niveis, prompt interativo com clamp 1–10 e porta 1–65535.
 
 Validacao do cutover (binario do build, sem `--net2`):
@@ -556,3 +555,11 @@ Validacao em jogo com 2 clientes reais ainda **a confirmar**.
 - cobertura real de sincronizacao de inimigos e entidades em partidas longas;
 - descoberta automatica de servidores na LAN (atualmente o IPv4 e configurado manualmente).
 
+
+## 2026-10-05 — Remocao do Core legado
+- Excluidos: src/OriCoopDedicatedServer/OriCoopDedicatedServer.Core/ (18 arquivos: Server.cs:87 origem do Ignored packet ... 151363, Client.cs, Packet.cs, ServerHandle.cs, ServerSend.cs, Logger.cs, API/, CommandSystem/) e src/OriCoopDedicatedServer/OriCoopDedicatedServer/Game/ (10 arquivos fora do build via Compile Remove).
+- Motivo: grep mostrou zero ProjectReference/uso no Net/ novo; SmokeProbe nao referencia Core; Game/ antigo so referenciava Core.
+- OriCoopPlus.sln: projeto Core removido (lista + 12 linhas de config).
+- OriCoopDedicatedServer.csproj: removido Compile Remove Game/**, comentario atualizado.
+- Teste: dotnet build OriCoopPlus.sln -c Release => 0 aviso, 0 erro.
+- Deploy: OriCoopBepInEx.dll (84.480B) em D:\...\Ori DE\BepInEx\plugins\, servidor (dll 104.448B+exe+deps+runtimeconfig+pdb) em D:\...\Ori DE\Server\, OriCoopDedicatedServer.Core.dll/.pdb removidos de la.

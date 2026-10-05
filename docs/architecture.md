@@ -20,9 +20,11 @@ OriCoopDedicatedServer.exe (novo core, sem dependencias externas)
        └─ Diagnostics (FileConsoleLogger: console + Logs/server.log)
 ```
 
-O `OriCoopDedicatedServer.Core` antigo saiu do build no cutover (02-04):
-permanece no disco como referencia, mas o exe nao o referencia nem o
-compila. Nao ha dual-stack nem fallback de protocolo.
+O `OriCoopDedicatedServer.Core` antigo foi removido do repositorio em
+2026-10-05 (junto com `OriCoopDedicatedServer/Game/` do path antigo): nao ha
+dual-stack nem fallback de protocolo. Rodar binario antigo gera o sintoma
+`Ignored packet with unknown client ID 151363` (magic `0x4F43`/v2 lido como
+`int`), porque o cliente novo so fala envelope 24B.
 
 O projeto `OriCoopDedicatedServer` e autonomo: servidor UDP com envelope
 versionado `0x4F43`/v2, sessoes com token, confiabilidade por pacote
@@ -35,7 +37,6 @@ dependência de servidor ou API de multiplayer externa, nem do Core antigo.
 | --- | --- | --- | --- |
 | `OriCoopBepInEx` | `.NET Framework 3.5` | `OriCoopBepInEx.dll` | plugin BepInEx 5.x, replicação e blindagem visual de entidades |
 | `OriCoopShared` | arquivos compartilhados | incorporado nos dois modulos | enums, dados de sincronização, configuração e contrato comum |
-| `OriCoopDedicatedServer.Core` | legado, fora do build | (nenhuma) | Core antigo: transporte/sessao/comandos pre-rewrite; fica no disco como referencia, sem `ProjectReference` |
 | `OriCoopDedicatedServer` | `.NET 8.0` | `OriCoopDedicatedServer.exe` | servidor dedicado: `Net/` (transporte, sessao, jogo, diagnostico) + `SmokeProbe` de validacao |
 
 O cliente referencia DLLs instaladas pelo jogo em `oriDE_Data\Managed` e o `BepInEx.dll`
