@@ -357,10 +357,10 @@ fresco (`--net2 --auto --port 7779 --max-players 10`):
 
 Modos isolados contra um servidor ja em pe: `--test handshake|relay|ping|reliable|timeout|token`
 (aceita lista com virgula, ex. `--test timeout,token`; so `all` exige
-servidor fresco para as assercoes de IDs 1 e 2; `full` sobe o proprio
-servidor com `--max-players 2` na porta dada — nao use com servidor ja em pe
+servidor fresco para as assercoes de IDs 1 e 2; `full` e `game` sobem o
+proprio servidor na porta dada — nao use com servidor ja em pe
 nela). Cada modo isolado imprime seu token (`RELIABLE_OK`, `TIMEOUT_OK`,
-`TOKEN_OK`, ...) seguido de `SMOKE_OK`. Cada teste libera seus slots com
+`TOKEN_OK`, `GAME_OK`, ...) seguido de `SMOKE_OK`. Cada teste libera seus slots com
 `DISCONNECT` ao final para nao acumular sessoes ate o teto no modo `all`.
 
 ### Hardening 02-02 — ACK+retry, sessao, sweeper e chat (2026-10-05, automatizado)
@@ -388,6 +388,32 @@ Observacao Windows/UDP: envios do servidor para sockets ja fechados geram
 rajadas de `ConnectionReset` no log (`ReceiveAsync falhou (segue ouvindo)`);
 o loop de receive absorve e segue — e cosmetico, sem perda de datagramas
 ativos.
+
+### Game 02-03 — handlers, config persistente, dummy 999 + comandos (2026-10-05, automatizado)
+
+Comando unico (sobe servidores proprios, valida e derruba; `serverconfig.json`
+do `bin/Release/net8.0` e preservado/restaurado ao final):
+
+```powershell
+dotnet run --project .\src\OriCoopDedicatedServer\SmokeProbe\SmokeProbe.csproj -- --port 7779 --test game
+```
+
+Resultado: `GAME_OK` + `SMOKE_OK`, exit 0, em duas fases:
+
+- Fase 1 (defaults gravados pelo probe): `CONFIG_SYNC` unicast pos-`Confirm`
+  com os 8 bools `[on,off,off,off,off,off,off,off]`; snapshot de A registrado;
+  `TELEPORT_REQUEST` de B→A responde pos+nick (`Game_A`) e anuncia
+  (`Game_B ... Game_A`) em chat; `DUMMY_ACTION 0` spawna o dummy e B recebe
+  `PLAYER_STATE` com `clientId 999` + nick `Bot_Amigo`; teleport ao 999
+  responde `Bot_Amigo`; segundo toggle gera `DISCONNECT` do 999.
+- Fase 2 (`AllowTeleport=false` no `serverconfig.json`): `CONFIG_SYNC`
+  carrega `off` (prova persistencia entre restarts); `TELEPORT_REQUEST`
+  negado chega so ao solicitante em chat (`Teleporte desativado`) e nada
+  chega a testemunha em 900 ms.
+
+Checagem extra de restart (manual): hash de `serverconfig.json` antes/depois
+de stop+start identico (`PERSIST_OK`). Modo `game` tambem roda dentro do
+`--test all` (servidor proprio na porta `all+21`).
 
 Uso manual do novo core (path antigo continua sendo o default sem `--net2`):
 

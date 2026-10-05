@@ -98,8 +98,8 @@ internal static class Program
 
 	private static void RunNet2Host(int maxplayers, int port)
 	{
-		var log = new Net.Diagnostics.FileConsoleLogger("net2-server.log");
-		var host = new Net.NetServerHost(port, maxplayers, log);
+		var boot = new Net.Game.ServerBoot(port, maxplayers);
+		var log = boot.Log;
 		using (var cts = new System.Threading.CancellationTokenSource())
 		{
 			System.Console.CancelKeyPress += (sender, e) =>
@@ -107,7 +107,7 @@ internal static class Program
 				e.Cancel = true;
 				try { cts.Cancel(); } catch { }
 			};
-			System.Threading.Tasks.Task runTask = host.RunAsync(cts.Token);
+			System.Threading.Tasks.Task runTask = boot.StartAsync(cts.Token);
 			log.Log(Net.Diagnostics.ServerLogLevel.Info, "NET2", "Digite stop para encerrar.");
 			while (!cts.IsCancellationRequested)
 			{
@@ -123,11 +123,11 @@ internal static class Program
 				string cmd = rawOpt.Trim().ToLowerInvariant();
 				if (cmd == "stop" || cmd == "quit" || cmd == "exit")
 				{
-					try { cts.Cancel(); } catch { }
+					try { boot.RequestStop(); } catch { }
 					break;
 				}
 			}
-			try { runTask.GetAwaiter().GetResult(); }
+			try { boot.StopAsync().GetAwaiter().GetResult(); }
 			catch (System.OperationCanceledException) { }
 		}
 	}

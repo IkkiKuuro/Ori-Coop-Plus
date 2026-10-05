@@ -78,6 +78,7 @@ internal static class Program
                 FailUnless(TestToken(port), "token falhou");
                 FailUnless(TestTimeout(port), "timeout falhou");
                 FailUnless(TestServerFull(serverProject, port + 11), "server-full falhou");
+                FailUnless(TestGame(serverProject, port + 21), "game falhou");
                 Console.WriteLine("SMOKE_OK");
                 return 0;
             }
@@ -178,9 +179,17 @@ internal static class Program
                 ok = TestServerFull(FindServerProject(), port);
                 token = "FULL_OK";
             }
+            else if (mode == "game")
+            {
+                // Gerencia o proprio servidor na porta dada (fases em sequencia:
+                // defaults -> teleport permitido + dummy 999; config negando ->
+                // teleport negado em unicast). Nao use com servidor ja em pe nela.
+                ok = TestGame(FindServerProject(), port);
+                token = "GAME_OK";
+            }
             else
             {
-                Console.WriteLine("SMOKE_FAIL: teste desconhecido '" + mode + "' (use all|handshake|relay|ping|reliable|timeout|token|full)");
+                Console.WriteLine("SMOKE_FAIL: teste desconhecido '" + mode + "' (use all|handshake|relay|ping|reliable|timeout|token|full|game)");
                 return 1;
             }
             if (!ok)
@@ -948,6 +957,528 @@ internal static class Program
                 KillServer(server);
             }
         }
+    }
+
+    private const int ConfigSyncPacket = 16;
+    private const int TeleportPacket = 15;
+    private const int DummyActionPacket = 17;
+    private const int DummyId = 999;
+
+    /// <summary>
+    /// Modo game (02-03): prova a camada Game no fio em duas fases com
+    /// servidores proprios (porta dedicada). Fase 1 (defaults): CONFIG_SYNC
+    /// com 8 bools, teleport permitido com resposta+anuncio, dummy 999
+    /// visivel via DUMMY_ACTION e teleport ao dummy. Fase 2 (config com
+    /// AllowTeleport=false gravada no serverconfig.json do exe): prova
+    /// persistencia (CONFIG_SYNC carrega false) e teleport negado em unicast
+    /// (solicitante recebe, testemunha nao). O arquivo e restaurado ao final.
+    /// </summary>
+    private static bool TestGame(string serverProject, int port)
+    {
+        string projectDir = Path.GetDirectoryName(serverProject) ?? string.Empty;
+        string cfgPath = Path.Combine(projectDir, "bin", "Release", "net8.0", "serverconfig.json");
+        byte[]? originalCfg = null;
+        bool hadCfg = false;
+        try
+        {
+            if (File.Exists(cfgPath))
+            {
+                originalCfg = File.ReadAllBytes(cfgPath);
+                hadCfg = true;
+            }
+            WriteGameConfig(cfgPath, true, false, false, false, false, false, false, false);
+            var log1 = new StringBuilder();
+            using (var server = SpawnServer(serverProject, port, 10, log1))
+            {
+                try
+                {
+                    WaitForServer(port, TimeSpan.FromSeconds(120));
+                    if (!TestGamePhase1(port))
+                    {
+                        Console.WriteLine("--- server log (tail fase 1) ---");
+                        Console.WriteLine(Tail(log1.ToString(), 30));
+                        return false;
+                    }
+                }
+                finally
+                {
+                    KillServer(server);
+                }
+            }
+            WriteGameConfig(cfgPath, false, false, false, false, false, false, false, false);
+            var log2 = new StringBuilder();
+            using (var server = SpawnServer(serverProject, port, 10, log2))
+            {
+                try
+                {
+                    WaitForServer(port, TimeSpan.FromSeconds(120));
+                    if (!TestGamePhase2(port))
+                    {
+                        Console.WriteLine("--- server log (tail fase 2) ---");
+                        Console.WriteLine(Tail(log2.ToString(), 30));
+                        return false;
+                    }
+                }
+                finally
+                {
+                    KillServer(server);
+                }
+            }
+            Console.WriteLine("PASS game (config 8 bools, teleport permitido+negado, dummy 999)");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("FAIL game (" + ex.GetType().Name + " " + ex.Message + ")");
+            return false;
+        }
+        finally
+        {
+            try
+            {
+                if (hadCfg && originalCfg != null)
+                {
+                    File.WriteAllBytes(cfgPath, originalCfg);
+                }
+                else if (File.Exists(cfgPath))
+                {
+                    File.Delete(cfgPath);
+                }
+            }
+            catch (Exception)
+            {
+            }
+        }
+    }
+
+    private static void WriteGameConfig(string path, bool tp, bool ab, bool story, bool world, bool doors, bool names, bool cc, bool es)
+    {
+        string json = "{\n"
+            + "  \"AllowTeleport\": " + (tp ? "true" : "false") + ",\n"
+            + "  \"ShareAbilities\": " + (ab ? "true" : "false") + ",\n"
+            + "  \"ShareStoryOnly\": " + (story ? "true" : "false") + ",\n"
+            + "  \"ShareWorldEvents\": " + (world ? "true" : "false") + ",\n"
+            + "  \"ShareDoorsAndLevers\": " + (doors ? "true" : "false") + ",\n"
+            + "  \"ShowNicknames\": " + (names ? "true" : "false") + ",\n"
+            + "  \"ClientColors\": " + (cc ? "true" : "false") + ",\n"
+            + "  \"EntitySync\": " + (es ? "true" : "false") + "\n"
+            + "}\n";
+        string? dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+        File.WriteAllText(path, json, Encoding.ASCII);
+    }
+
+    private static bool TestGamePhase1(int port)
+    {
+        using (var clientA = NewClient())
+        using (var clientB = NewClient())
+        {
+            var server = new IPEndPoint(IPAddress.Loopback, port);
+            uint seqA = 0;
+            uint seqB = 0;
+            if (!HelloConfirm(clientA, server, "Game_A", ref seqA, out int idA, out uint tokenA) || idA <= 0)
+            {
+                Console.WriteLine("FAIL game-fase1 (handshake A)");
+                return false;
+            }
+            if (!HelloConfirm(clientB, server, "Game_B", ref seqB, out int idB, out uint tokenB) || idB <= 0 || idB == idA)
+            {
+                Console.WriteLine("FAIL game-fase1 (handshake B)");
+                return false;
+            }
+
+            // 1. CONFIG_SYNC com os 8 bools na ordem (defaults).
+            if (!AwaitConfigSync(clientA, server, idA, tokenA, ref seqA, out bool[] flags))
+            {
+                Console.WriteLine("FAIL game-fase1 (sem CONFIG_SYNC em 5 s)");
+                return false;
+            }
+            bool[] expect = new bool[] { true, false, false, false, false, false, false, false };
+            for (int i = 0; i < 8; i++)
+            {
+                if (flags[i] != expect[i])
+                {
+                    Console.WriteLine("FAIL game-fase1 (CONFIG_SYNC[" + i + "]=" + flags[i] + ", esperado " + expect[i] + ")");
+                    return false;
+                }
+            }
+            DrainAndAck(clientA, server, idA, tokenA, ref seqA, 1200);
+            DrainAndAck(clientB, server, idB, tokenB, ref seqB, 1200);
+
+            // 2. A publica snapshot; B teleporta ate A (permitido).
+            SendPlayerState(clientA, server, idA, tokenA, ref seqA);
+            System.Threading.Thread.Sleep(500);
+            SendTeleportRequest(clientB, server, idB, tokenB, ref seqB, idA);
+            bool responseOk = false;
+            bool announceOnB = false;
+            DateTime deadline = DateTime.UtcNow.AddSeconds(6);
+            var remote = new IPEndPoint(IPAddress.Any, 0);
+            clientB.Client.ReceiveTimeout = 400;
+            while (DateTime.UtcNow < deadline && (!responseOk || !announceOnB))
+            {
+                try
+                {
+                    byte[] reply = clientB.Receive(ref remote);
+                    if (!TryParseHeader(reply, out int packetId, out uint rseq, out _, out _, out byte[] rbody))
+                    {
+                        continue;
+                    }
+                    SendAck(clientB, server, idB, tokenB, ref seqB, rseq);
+                    if (packetId == TeleportPacket
+                        && TryParseTeleportResponse(rbody, out float tx, out float ty, out float tz, out string tnick)
+                        && tnick == "Game_A"
+                        && Math.Abs(tx - 10.5f) < 0.001f && Math.Abs(ty - 20.25f) < 0.001f)
+                    {
+                        responseOk = true;
+                    }
+                    if (packetId == ChatPacket
+                        && TryParseChatBody(rbody, out string asender, out string atext)
+                        && asender.Contains("SERVER") && atext.Contains("Game_B") && atext.Contains("Game_A"))
+                    {
+                        announceOnB = true;
+                    }
+                }
+                catch (SocketException)
+                {
+                }
+            }
+            if (!responseOk)
+            {
+                Console.WriteLine("FAIL game-fase1 (sem TELEPORT_RESPONSE para B com pos+nick de A)");
+                return false;
+            }
+            // Anuncio tambem chega a A (broadcast); confirma em qualquer ponta.
+            bool announceOnA = AwaitChatContaining(clientA, server, idA, tokenA, ref seqA, "Game_B", "Game_A", 4000);
+            if (!announceOnB && !announceOnA)
+            {
+                Console.WriteLine("FAIL game-fase1 (sem anuncio de teleporte em A nem B)");
+                return false;
+            }
+
+            // 3. Dummy via DUMMY_ACTION 0: B ve PLAYER_STATE com clientId 999.
+            SendDummyAction(clientA, server, idA, tokenA, ref seqA, 0, 0);
+            bool dummyOk = false;
+            deadline = DateTime.UtcNow.AddSeconds(8);
+            clientB.Client.ReceiveTimeout = 400;
+            while (DateTime.UtcNow < deadline && !dummyOk)
+            {
+                try
+                {
+                    byte[] reply = clientB.Receive(ref remote);
+                    if (TryParseHeader(reply, out int packetId, out _, out int rclient, out _, out byte[] rbody)
+                        && packetId == PlayerStateId && rclient == DummyId
+                        && TryParsePlayerStateNick(rbody, out string dnick) && dnick == "Bot_Amigo")
+                    {
+                        dummyOk = true;
+                    }
+                }
+                catch (SocketException)
+                {
+                }
+            }
+            if (!dummyOk)
+            {
+                Console.WriteLine("FAIL game-fase1 (dummy 999 nao visivel para B em 8 s)");
+                return false;
+            }
+
+            // 4. Teleport ao dummy 999: resposta com Bot_Amigo.
+            DrainAndAck(clientB, server, idB, tokenB, ref seqB, 800);
+            SendTeleportRequest(clientB, server, idB, tokenB, ref seqB, DummyId);
+            bool dummyTpOk = false;
+            deadline = DateTime.UtcNow.AddSeconds(6);
+            while (DateTime.UtcNow < deadline && !dummyTpOk)
+            {
+                try
+                {
+                    byte[] reply = clientB.Receive(ref remote);
+                    if (!TryParseHeader(reply, out int packetId, out uint rseq, out _, out _, out byte[] rbody))
+                    {
+                        continue;
+                    }
+                    SendAck(clientB, server, idB, tokenB, ref seqB, rseq);
+                    if (packetId == TeleportPacket
+                        && TryParseTeleportResponse(rbody, out _, out _, out _, out string tnick)
+                        && tnick == "Bot_Amigo")
+                    {
+                        dummyTpOk = true;
+                    }
+                }
+                catch (SocketException)
+                {
+                }
+            }
+            if (!dummyTpOk)
+            {
+                Console.WriteLine("FAIL game-fase1 (sem TELEPORT_RESPONSE do dummy 999)");
+                return false;
+            }
+
+            // 5. Toggle off: B recebe DISCONNECT do 999.
+            SendDummyAction(clientA, server, idA, tokenA, ref seqA, 0, 0);
+            bool dummyByeOk = false;
+            deadline = DateTime.UtcNow.AddSeconds(6);
+            while (DateTime.UtcNow < deadline && !dummyByeOk)
+            {
+                try
+                {
+                    byte[] reply = clientB.Receive(ref remote);
+                    if (!TryParseHeader(reply, out int packetId, out uint rseq, out _, out _, out byte[] rbody))
+                    {
+                        continue;
+                    }
+                    SendAck(clientB, server, idB, tokenB, ref seqB, rseq);
+                    if (packetId == DisconnectPacket && rbody.Length >= 8
+                        && ReadI32(rbody, 0) == DisconnectPacket && ReadI32(rbody, 4) == DummyId)
+                    {
+                        dummyByeOk = true;
+                    }
+                }
+                catch (SocketException)
+                {
+                }
+            }
+            if (!dummyByeOk)
+            {
+                Console.WriteLine("FAIL game-fase1 (sem DISCONNECT do dummy 999)");
+                return false;
+            }
+
+            Console.WriteLine("PASS game-fase1 (config 8, teleport permitido, dummy 999 visivel+teleport+bye)");
+            SendDisconnect(clientA, server, idA, tokenA, ref seqA);
+            SendDisconnect(clientB, server, idB, tokenB, ref seqB);
+            return true;
+        }
+    }
+
+    private static bool TestGamePhase2(int port)
+    {
+        using (var clientA = NewClient())
+        using (var clientB = NewClient())
+        {
+            var server = new IPEndPoint(IPAddress.Loopback, port);
+            uint seqA = 0;
+            uint seqB = 0;
+            if (!HelloConfirm(clientA, server, "Deny_A", ref seqA, out int idA, out uint tokenA) || idA <= 0)
+            {
+                Console.WriteLine("FAIL game-fase2 (handshake A)");
+                return false;
+            }
+            if (!HelloConfirm(clientB, server, "Deny_B", ref seqB, out int idB, out uint tokenB) || idB <= 0 || idB == idA)
+            {
+                Console.WriteLine("FAIL game-fase2 (handshake B)");
+                return false;
+            }
+
+            // 1. Persistencia: CONFIG_SYNC carrega AllowTeleport=false do arquivo.
+            if (!AwaitConfigSync(clientA, server, idA, tokenA, ref seqA, out bool[] flags))
+            {
+                Console.WriteLine("FAIL game-fase2 (sem CONFIG_SYNC em 5 s)");
+                return false;
+            }
+            if (flags[0])
+            {
+                Console.WriteLine("FAIL game-fase2 (AllowTeleport ainda on; serverconfig.json nao carregado)");
+                return false;
+            }
+            DrainAndAck(clientA, server, idA, tokenA, ref seqA, 1200);
+            DrainAndAck(clientB, server, idB, tokenB, ref seqB, 1200);
+
+            // 2. B teleporta ate A: negado em unicast (so B, solicitante, recebe).
+            SendTeleportRequest(clientB, server, idB, tokenB, ref seqB, idA);
+            bool denyOk = AwaitChatContaining(clientB, server, idB, tokenB, ref seqB, "SERVER", "Teleporte desativado", 4000);
+            if (!denyOk)
+            {
+                Console.WriteLine("FAIL game-fase2 (sem chat de negacao para o solicitante)");
+                return false;
+            }
+            var remote = new IPEndPoint(IPAddress.Any, 0);
+            DateTime quiet = DateTime.UtcNow.AddMilliseconds(900);
+            clientA.Client.ReceiveTimeout = 400;
+            while (DateTime.UtcNow < quiet)
+            {
+                try
+                {
+                    byte[] reply = clientA.Receive(ref remote);
+                    if (TryParseHeader(reply, out int packetId, out _, out _, out _, out _)
+                        && (packetId == ChatPacket || packetId == TeleportPacket))
+                    {
+                        Console.WriteLine("FAIL game-fase2 (negacao vazou para a testemunha A)");
+                        return false;
+                    }
+                }
+                catch (SocketException)
+                {
+                }
+            }
+
+            Console.WriteLine("PASS game-fase2 (persistencia + teleport negado em unicast)");
+            SendDisconnect(clientA, server, idA, tokenA, ref seqA);
+            SendDisconnect(clientB, server, idB, tokenB, ref seqB);
+            return true;
+        }
+    }
+
+    private static bool AwaitConfigSync(UdpClient client, IPEndPoint server, int id, uint token, ref uint seq, out bool[] flags)
+    {
+        flags = new bool[8];
+        var remote = new IPEndPoint(IPAddress.Any, 0);
+        DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+        client.Client.ReceiveTimeout = 400;
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                byte[] reply = client.Receive(ref remote);
+                if (!TryParseHeader(reply, out int packetId, out uint rseq, out _, out _, out byte[] rbody))
+                {
+                    continue;
+                }
+                SendAck(client, server, id, token, ref seq, rseq);
+                if (packetId == ConfigSyncPacket && rbody.Length >= 12 && ReadI32(rbody, 0) == ConfigSyncPacket)
+                {
+                    for (int i = 0; i < 8; i++)
+                    {
+                        flags[i] = rbody[4 + i] != 0;
+                    }
+                    return true;
+                }
+            }
+            catch (SocketException)
+            {
+            }
+        }
+        return false;
+    }
+
+    private static bool AwaitChatContaining(UdpClient client, IPEndPoint server, int id, uint token, ref uint seq, string wantA, string wantB, int timeoutMs)
+    {
+        var remote = new IPEndPoint(IPAddress.Any, 0);
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        client.Client.ReceiveTimeout = 400;
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                byte[] reply = client.Receive(ref remote);
+                if (!TryParseHeader(reply, out int packetId, out uint rseq, out _, out _, out byte[] rbody))
+                {
+                    continue;
+                }
+                SendAck(client, server, id, token, ref seq, rseq);
+                if (packetId == ChatPacket
+                    && TryParseChatBody(rbody, out string sender, out string text)
+                    && sender.Contains(wantA) && text.Contains(wantB))
+                {
+                    return true;
+                }
+            }
+            catch (SocketException)
+            {
+            }
+        }
+        return false;
+    }
+
+    private static void DrainAndAck(UdpClient client, IPEndPoint server, int id, uint token, ref uint seq, int durationMs)
+    {
+        var remote = new IPEndPoint(IPAddress.Any, 0);
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(durationMs);
+        client.Client.ReceiveTimeout = 200;
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                byte[] reply = client.Receive(ref remote);
+                if (TryParseHeader(reply, out _, out uint rseq, out _, out _, out _))
+                {
+                    SendAck(client, server, id, token, ref seq, rseq);
+                }
+            }
+            catch (SocketException)
+            {
+            }
+        }
+    }
+
+    private static void SendPlayerState(UdpClient client, IPEndPoint server, int id, uint token, ref uint seq)
+    {
+        byte[] body = BuildPlayerStateBody();
+        byte[] datagram = BuildEnvelope(0, ++seq, id, token, PlayerStateId, body);
+        client.Send(datagram, datagram.Length, server);
+    }
+
+    private static void SendTeleportRequest(UdpClient client, IPEndPoint server, int id, uint token, ref uint seq, int targetId)
+    {
+        byte[] body = new byte[8];
+        WriteI32(body, 0, TeleportPacket);
+        WriteI32(body, 4, targetId);
+        byte[] datagram = BuildEnvelope(0, ++seq, id, token, TeleportPacket, body);
+        client.Send(datagram, datagram.Length, server);
+    }
+
+    private static void SendDummyAction(UdpClient client, IPEndPoint server, int id, uint token, ref uint seq, int action, int abilityId)
+    {
+        byte[] body = action == 1 ? new byte[12] : new byte[8];
+        WriteI32(body, 0, DummyActionPacket);
+        WriteI32(body, 4, action);
+        if (action == 1)
+        {
+            WriteI32(body, 8, abilityId);
+        }
+        byte[] datagram = BuildEnvelope(0, ++seq, id, token, DummyActionPacket, body);
+        client.Send(datagram, datagram.Length, server);
+    }
+
+    private static bool TryParseTeleportResponse(byte[] payload, out float x, out float y, out float z, out string nick)
+    {
+        x = 0f;
+        y = 0f;
+        z = 0f;
+        nick = string.Empty;
+        if (payload == null || payload.Length < 20 || ReadI32(payload, 0) != TeleportPacket)
+        {
+            return false;
+        }
+        x = ReadF32(payload, 4);
+        y = ReadF32(payload, 8);
+        z = ReadF32(payload, 12);
+        int nickLen = ReadI32(payload, 16);
+        if (nickLen < 0 || nickLen > payload.Length - 20)
+        {
+            return false;
+        }
+        nick = Encoding.ASCII.GetString(payload, 20, nickLen);
+        return true;
+    }
+
+    private static bool TryParsePlayerStateNick(byte[] payload, out string nick)
+    {
+        nick = string.Empty;
+        if (payload == null || payload.Length < 34 || ReadI32(payload, 0) != PlayerStateId)
+        {
+            return false;
+        }
+        int nickLen = ReadI32(payload, 30);
+        if (nickLen < 0 || nickLen > payload.Length - 34)
+        {
+            return false;
+        }
+        nick = Encoding.ASCII.GetString(payload, 34, nickLen);
+        return true;
+    }
+
+    private static float ReadF32(byte[] buffer, int offset)
+    {
+        byte[] bytes = new byte[] { buffer[offset], buffer[offset + 1], buffer[offset + 2], buffer[offset + 3] };
+        if (!BitConverter.IsLittleEndian)
+        {
+            Array.Reverse(bytes);
+        }
+        return BitConverter.ToSingle(bytes, 0);
     }
 
     private static bool ExpectSysAck(UdpClient client, uint seq, int timeoutMs)

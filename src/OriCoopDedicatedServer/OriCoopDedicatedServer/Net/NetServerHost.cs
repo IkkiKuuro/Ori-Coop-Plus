@@ -24,7 +24,7 @@ namespace OriCoopDedicatedServer.Net
     /// usam ACK + retry via AckTracker (250 ms x3); PLAYER_STATE e Ping
     /// seguem unreliable sem pendencia.
     /// </summary>
-    public sealed class NetServerHost
+    public sealed class NetServerHost : IGameTransport
     {
         private const int ChatPacketId = -5;
 
@@ -39,13 +39,24 @@ namespace OriCoopDedicatedServer.Net
         private Timer _sweepTimer = null!;
         private uint _serverSeq;
 
+        /// <summary>
+        /// Camada Game (02-03): quando ligada pelo ServerBoot, pacotes de
+        /// jogo vao para GameHandlers; null preserva o comportamento 02-02.
+        /// </summary>
+        public GameHandlers? Game { get; set; }
+
         public NetServerHost(int port, int maxPlayers, ILogger log)
+            : this(port, maxPlayers, log, null)
+        {
+        }
+
+        public NetServerHost(int port, int maxPlayers, ILogger log, SessionManager? sessions)
         {
             _port = port;
             _maxPlayers = maxPlayers;
             _log = log ?? throw new ArgumentNullException("log");
             _transport = new UdpTransport(_log);
-            _sessions = new SessionManager(maxPlayers, _log);
+            _sessions = sessions ?? new SessionManager(maxPlayers, _log);
             _relay = new PlayerStateRelay();
         }
 
@@ -186,6 +197,12 @@ namespace OriCoopDedicatedServer.Net
             }
             // Baseline do drop-old: seqs do remetente passam a valer a partir daqui.
             session.LastRecvSeq = header.Seq;
+            // Camada Game (02-03): COLOR inicial + CONFIG_SYNC unicast +
+            // historico de abilities no join.
+            if (Game != null)
+            {
+                await Game.OnPlayerJoinAsync(session, ct).ConfigureAwait(false);
+            }
         }
 
         private async Task HandlePingAsync(IPEndPoint remote, NetEnvelope header, byte[] payload, CancellationToken ct)
@@ -221,6 +238,10 @@ namespace OriCoopDedicatedServer.Net
 
             if (header.PacketId == (int)PacketType.DISCONNECT)
             {
+                if (Game != null)
+                {
+                    Game.OnSessionLeft(sender.Id);
+                }
                 return HandleDisconnectAsync(sender, ct);
             }
 
@@ -236,6 +257,11 @@ namespace OriCoopDedicatedServer.Net
                     _log.Log(ServerLogLevel.Debug, "SESSAO", "Snapshot de " + sender.Id + " antes do Confirm (drop)");
                     return Task.CompletedTask;
                 }
+                // Camada Game (02-03): registra LastKnown + relay unreliable.
+                if (Game != null)
+                {
+                    return Game.HandlePlayerStateAsync(sender, header.Seq, payload, datagram.Data, ct);
+                }
                 if (!_relay.ShouldRelay(sender, header.Seq))
                 {
                     return Task.CompletedTask;
@@ -243,9 +269,22 @@ namespace OriCoopDedicatedServer.Net
                 return RelayAsync(datagram.Data, sender, ct);
             }
 
+            // Camada Game (02-03, via ServerBoot): pacotes de jogo vao para
+            // GameHandlers (gating, autoridade, carimbo do remetente).
+            if (Game != null && GameHandlers.IsGamePacket(header.PacketId))
+            {
+                if (!sender.IsReady)
+                {
+                    _log.Log(ServerLogLevel.Debug, "SESSAO", "Jogo " + header.PacketId + " de " + sender.Id + " antes do Confirm (drop)");
+                    return Task.CompletedTask;
+                }
+                return Game.DispatchAsync(sender, header.Seq, header.PacketId, payload, datagram.Data, ct);
+            }
+
             // Criticos (D-10): relay imediato dos bytes originais, com retry
-            // por destino ate o ACK (ou 3 tentativas). A Task 3 deste plano
-            // especializa chat (-5) e DISCONNECT (4) com regras de conteudo.
+            // por destino ate o ACK (ou 3 tentativas). Vale quando a camada
+            // Game nao esta ligada (comportamento 02-02); com Game, os
+            // pacotes de jogo sobem para os handlers acima.
             if (IsCriticalPacket(header.PacketId))
             {
                 if (!sender.IsReady)
@@ -256,8 +295,8 @@ namespace OriCoopDedicatedServer.Net
                 return RelayReliableAsync(datagram.Data, sender, header.Seq, ct);
             }
 
-            // Demais pacotes de jogo (nao-criticos fora PLAYER_STATE) ganham
-            // handlers no plano 02-03.
+            // Demais pacotes nao-criticos fora PLAYER_STATE e fora da camada
+            // Game: sem handler neste plano (drop).
             _log.Log(ServerLogLevel.Debug, "NET2", "Pacote " + header.PacketId + " de " + sender.Id + " sem handler neste plano (drop)");
             return Task.CompletedTask;
         }
@@ -492,6 +531,10 @@ namespace OriCoopDedicatedServer.Net
             {
                 Session.Session gone = expired[i];
                 _acks.PurgeFor(gone.EndPoint);
+                if (Game != null)
+                {
+                    Game.OnSessionLeft(gone.Id);
+                }
                 _log.Log(ServerLogLevel.Info, "SESSAO", "ID " + gone.Id + " (" + gone.Nickname
                     + ") removido apos " + NetProtocol.SessionTimeoutMs + " ms sem datagrama");
                 try
@@ -575,6 +618,126 @@ namespace OriCoopDedicatedServer.Net
             catch (Exception ex)
             {
                 _log.Log(ServerLogLevel.Warning, "NET2", "Envio confiavel para " + remote + " falhou: " + ex.GetType().Name);
+            }
+        }
+
+        /// <summary>
+        /// Superficie de envio da camada Game (02-03, via IGameTransport):
+        /// unicast/broadcast confiavel, relay cru e chat originados no
+        /// servidor, mais snapshot do dummy (clientId 999, unreliable).
+        /// </summary>
+        async Task IGameTransport.UnicastReliableAsync(Session.Session session, int packetId, byte[] payload, CancellationToken ct)
+        {
+            if (session == null)
+            {
+                return;
+            }
+            await SendReliableAsync(session.EndPoint, packetId, payload, session.Id, ct).ConfigureAwait(false);
+        }
+
+        async Task IGameTransport.BroadcastReliableAsync(int packetId, byte[] payload, CancellationToken ct)
+        {
+            await GameBroadcastReliableAsync(packetId, payload, ct).ConfigureAwait(false);
+        }
+
+        Task IGameTransport.RelayUnreliableAsync(byte[] originalDatagram, Session.Session sender, CancellationToken ct)
+        {
+            return RelayAsync(originalDatagram, sender, ct);
+        }
+
+        Task IGameTransport.RelayReliableAsync(byte[] originalDatagram, Session.Session sender, uint seq, CancellationToken ct)
+        {
+            return RelayReliableAsync(originalDatagram, sender, seq, ct);
+        }
+
+        Task IGameTransport.ChatUnicastAsync(Session.Session session, string sender, string text, CancellationToken ct)
+        {
+            if (session == null)
+            {
+                return Task.CompletedTask;
+            }
+            return SendReliableAsync(session.EndPoint, ChatPacketId, BuildChatPayload(sender, text), session.Id, ct);
+        }
+
+        async Task IGameTransport.ChatBroadcastAsync(string sender, string text, CancellationToken ct)
+        {
+            byte[] broadcast = BuildChatPayload(sender, text);
+            foreach (Session.Session target in _sessions.All)
+            {
+                if (!target.IsReady)
+                {
+                    continue;
+                }
+                try
+                {
+                    uint seq = NextServerSeq();
+                    byte[] datagram;
+                    string error;
+                    if (!EnvelopeCodec.TryEncode(NetProtocol.FlagReliable, seq, NetProtocol.ServerId, 0, ChatPacketId, 0, broadcast, out datagram, out error))
+                    {
+                        _log.Log(ServerLogLevel.Error, "NET2", "Encode falhou: " + error);
+                        return;
+                    }
+                    await _transport.SendAsync(datagram, target.EndPoint, ct).ConfigureAwait(false);
+                    _acks.Track(target.EndPoint, seq, datagram, target.Id);
+                }
+                catch (Exception ex)
+                {
+                    _log.Log(ServerLogLevel.Warning, "NET2", "Chat do servidor para " + target.Id + " falhou: " + ex.GetType().Name);
+                }
+            }
+        }
+
+        Task IGameTransport.BroadcastStateAsync(byte[] statePayload, CancellationToken ct)
+        {
+            return GameBroadcastStateAsync(statePayload, ct);
+        }
+
+        /// <summary>
+        /// Broadcast confiavel a todas as sessoes prontas (CONFIG_SYNC pos-
+        /// mudanca, relays reconstruidos com carimbo do remetente).
+        /// </summary>
+        public async Task GameBroadcastReliableAsync(int packetId, byte[] payload, CancellationToken ct)
+        {
+            foreach (Session.Session target in _sessions.All)
+            {
+                if (!target.IsReady)
+                {
+                    continue;
+                }
+                await SendReliableAsync(target.EndPoint, packetId, payload, target.Id, ct).ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// Snapshot do dummy: envelope unreliable com clientId 999 (fora do
+        /// allocator) a todas as sessoes prontas. Corpo no formato que o
+        /// cliente new-core le (sem carimbo — ver BuildPlayerStatePayload).
+        /// </summary>
+        public async Task GameBroadcastStateAsync(byte[] statePayload, CancellationToken ct)
+        {
+            foreach (Session.Session target in _sessions.All)
+            {
+                if (!target.IsReady)
+                {
+                    continue;
+                }
+                uint seq = NextServerSeq();
+                byte[] datagram;
+                string error;
+                if (!EnvelopeCodec.TryEncode(0, seq, NetProtocol.DummyId, 0, (int)PacketType.PLAYER_STATE, 0, statePayload, out datagram, out error))
+                {
+                    _log.Log(ServerLogLevel.Error, "NET2", "Encode do dummy falhou: " + error);
+                    return;
+                }
+                try
+                {
+                    await _transport.SendAsync(datagram, target.EndPoint, ct).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _log.Log(ServerLogLevel.Warning, "NET2", "Snapshot do dummy para " + target.Id + " falhou: " + ex.GetType().Name);
+                }
             }
         }
 
