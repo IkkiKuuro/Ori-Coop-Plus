@@ -7,11 +7,11 @@ ser alterados com extremo cuidado:
 
 | ID | Nome | Finalidade |
 | ---: | --- | --- |
-| 1 | `POSITION` | posicao de jogador |
-| 2 | `ANIM` | animacao |
-| 3 | `ID` | identificacao |
+| 1 | `POSITION` | REMOVIDO — posicao fragmentada (ver secao de remocao) |
+| 2 | `ANIM` | REMOVIDO — animacao fragmentada (ver secao de remocao) |
+| 3 | — | REMOVIDO (D-15) — identificacao do handshake legado; nunca reutilizar |
 | 4 | `DISCONNECT` | saida |
-| 5 | `REQUEST_PLAYERS` | pedido de jogadores |
+| 5 | — | REMOVIDO (D-15) — `REQUEST_PLAYERS`, listagem de jogadores; nunca reutilizar |
 | 6 | `COLOR` | cor |
 | 7 | `SKILL` | habilidade |
 | 10 | `SYNC_ABILITY` | evento de habilidade |
@@ -25,6 +25,29 @@ ser alterados com extremo cuidado:
 | 18 | `PLAYER_STATE` | estado unificado posicao+animacao (substitui `POSITION`+`ANIM` fragmentados) |
 
 `CoopSkillType` atualmente diferencia `NONE`, `Spirit` e `Stomp`.
+
+## IDs removidos no redesenho (D-15, quebra one-way)
+
+> Cliente e servidor precisam ser sempre do mesmo build; nao ha fallback
+> para o envelope antigo nem para estes IDs. IDs removidos nunca sao
+> reutilizados para outro significado.
+
+| ID | Nome antigo | Destino |
+| ---: | --- | --- |
+| 1 | `POSITION` | REMOVIDO no rework de anims; `PLAYER_STATE` 18 carrega posicao+anim |
+| 2 | `ANIM` | REMOVIDO no rework de anims; `PLAYER_STATE` 18 carrega posicao+anim |
+| 3 | `ID` | REMOVIDO — handshake legado; novo handshake e `Hello` 100 / `Welcome` 101 / `Confirm` 102 |
+| 5 | `REQUEST_PLAYERS` | REMOVIDO — listagem de jogadores; sem substituto (relay e automatico) |
+| -1 | handshake legado | REMOVIDO — substituido por `Hello` 100 / `Welcome` 101 / `Confirm` 102 |
+| -2 | `NBMessage` | REMOVIDO — repasse cego; sem substituto |
+| -3 | `NetworkVar` (`ES`, `cc`, `Coop_*`) | REMOVIDO — absorvido pelo `CONFIG_SYNC` de 8 bools abaixo |
+| -6 | `RPC` | REMOVIDO — repasse cego; sem substituto |
+| -7 | ping legado | REMOVIDO — substituido por `MsgPing` 104 / `MsgPong` 105 |
+
+`COLOR` 6, `SKILL` 7, `SYNC_ABILITY` 10, `SYNC_LEVER` 11, `SYNC_DOOR` 12,
+`SYNC_BREAKABLE` 13, `SYNC_WORLDEVENT` 14, `TELEPORT_REQUEST` 15,
+`CONFIG_SYNC` 16, `DUMMY_ACTION` 17 e `PLAYER_STATE` 18 mantem valores e
+ordem de campos.
 
 ## Transporte
 
@@ -137,32 +160,54 @@ bytes originais sem reconstrucao. Strings continuam `int32 length` + ASCII.
 
 ## Configuracao distribuida
 
-`CONFIG_SYNC` transmite, nesta ordem, os booleanos:
+`CONFIG_SYNC` 16 transmite, nesta ordem exata, 8 booleanos (1 byte cada,
+`BinaryWriter.Write(bool)` / `BinaryReader.ReadBoolean` no cliente):
 
 ```text
-AllowTeleport
-ShareAbilities
-ShareStoryOnly
-ShareWorldEvents
-ShareDoorsAndLevers
-ShowNicknames
+1. AllowTeleport
+2. ShareAbilities
+3. ShareStoryOnly
+4. ShareWorldEvents
+5. ShareDoorsAndLevers
+6. ShowNicknames
+7. ClientColors      (novo; antes via variavel de rede "cc" do -3 morto)
+8. EntitySync        (novo; antes via variavel de rede "ES" do -3 morto)
 ```
 
+Os 6 primeiros preservam ordem e significado; os 2 novos vao ao final. Corpo
+com marcador: `int 16` + 8 bools. O servidor e autoridade: transmite
+`CONFIG_SYNC` confiavel (ACK + retry) em unicast a cada `Confirm` e em
+broadcast a cada mudanca via comando; persiste em `serverconfig.json` ao lado
+do exe (nunca zera no boot). Leitores antigos que leem so os 6 primeiros
+permanecem validos (bytes extras ao final sao ignorados); a adocao plena dos
+8 bools no cliente BepInEx entra no cutover (02-04).
+
 Ao adicionar um campo, atualize o escritor no servidor, o leitor no cliente e
-esta tabela na mesma mudanca. `ClientColors` e `EntitySync` tambem possuem
-variaveis de rede proprias, mas nao fazem parte do payload de `CONFIG_SYNC`
-listado acima.
+esta tabela na mesma mudanca. As variaveis de rede `ES`, `cc` e `Coop_*` do
+pacote `-3` (morto, ver tabela de removidos) nao existem mais no fio.
 
-`TELEPORT_REQUEST` tem duas formas. Do cliente para o servidor, o payload e
-`int targetPlayerId`; do servidor para o cliente, e `Vector3 position` seguido
-de `string destinationNick`. Mensagens `-5` usam o formato de chat
-`string sender`, `string message`. A variavel `ES` (`-3`) informa se a
-sincronizacao adicional de entidades esta habilitada.
+`TELEPORT_REQUEST` 15 tem duas formas, ambas com marcador `int 15`. Do cliente
+para o servidor, o payload e `int targetPlayerId` (use `999` para o dummy
+`Bot_Amigo`); o servidor nega em unicast (chat) quando `AllowTeleport` esta
+desligado ou sem snapshot recente do destino. Do servidor para o cliente, e
+`Vector3 position` (3 floats) seguido de `string destinationNick` no formato
+legado (`int32 length` + ASCII).
 
-O pacote negativo `-7` e reservado para ping. O cliente envia um envelope com
-`long sentTicks`; o servidor devolve o mesmo valor e o cliente calcula o
-tempo de ida e volta em milissegundos. Esse valor e exibido para cada jogador
-no HUD do cliente.
+`DUMMY_ACTION` 17 e server-local: acoes vindas de cliente sao so `0` (toggle
+spawn/despawn) e `1` (ability: `int action` + `int abilityId`); triggers de
+alavanca/porta do dummy sao console-only (comando `/dummy`), nunca via fio.
+
+Mensagens `-5` usam o formato de chat `string sender`, `string message` com
+marcador `int -5`. O ping legado `-7` nao existe mais: o cliente envia
+`MsgPing` 104 com `long sentTicks` e o servidor devolve `MsgPong` 105 com o
+mesmo valor; o cliente calcula ida-volta em ms e exibe no HUD.
+
+Regra de corpo legado preservado: pacotes de jogo mantem o corpo
+byte-identico ao formato anterior, incluindo o `int` inicial com o proprio
+ID (ex. `18`) e a ordem de campos atual — o `playerId` do remetente viaja no
+`clientId` do header do envelope e o `packetId` do header espelha o mesmo
+valor do marcador para dispatch sem parse. Strings continuam
+`int32 length` + ASCII.
 
 ## Pacote unificado PLAYER_STATE (18)
 
