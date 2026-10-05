@@ -59,6 +59,13 @@ namespace OriCoopBepInEx.Networking
 
             _client = new UdpClient(AddressFamily.InterNetwork);
             _client.Client.ReceiveTimeout = 1000;
+            try
+            {
+                // Igual ao servidor: ignora ICMP Port Unreachable (ex.: servidor
+                // reiniciado) em vez de estourar ConnectionReset no Receive.
+                _client.Client.IOControl((IOControlCode)(-1744830452), new byte[] { 0, 0, 0, 0 }, null);
+            }
+            catch { }
             IPAddress[] addresses = Dns.GetHostAddresses(host);
             IPAddress serverAddress = null;
             for (int i = 0; i < addresses.Length; i++)

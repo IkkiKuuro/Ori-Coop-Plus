@@ -318,7 +318,7 @@ Use `/coop` sem argumentos para consultar o estado atual.
    - Acesse pelo submenu "Configurar Conexao de Servidor" ou pela tecla de atalho **F6**.
    - Permite alterar IP, Porta e Nickname em tempo real, buscar servidores na LAN (`Buscar LAN`) e conectar/desconectar sem reiniciar o jogo.
 
-### Validacao do rework de anims + puppet leve (build 77.312 bytes, 2026-10-05 — pendente de teste em jogo)
+### Validacao do rework de anims + puppet leve + teleporte/UDP (builds 2026-10-05 — pendente de teste em jogo)
 
 Procedimento em [`docs/anim-test-battery.md`](anim-test-battery.md) (T0–T4).
 O que este build corrige e precisa de confirmação com 2 clientes:
@@ -326,10 +326,11 @@ parado o puppet deve ficar em Idle do Ori (nunca sprite de inimigo);
 Bash/Dash/Glide/Stomp/ChargeJump/DoubleJump/WallSlide/WallJump devem aparecer
 (sender lê `Controller` + nome do clipe, não só velocidade);
 `F8` deve listar clipes com `src=sein` cobrindo os 12 estados.
-**Implantada:** DLL 77.312 bytes copiada para
-`D:\SteamLibrary\...\BepInEx\plugins\` em 2026-10-05. Inclui puppet leve
-(`RemotePuppetFactory` instancia só a subárvore visual do Sein) + correções
-de anim da build anterior.
+**Implantada:** DLL 78.336 bytes copiada para
+`D:\SteamLibrary\...\BepInEx\plugins\` e `OriCoopDedicatedServer.Core.dll`
+(35.328 bytes) para `<ORI_DIR>\Server\` em 2026-10-05. Inclui puppet leve,
+correções de anim, `FindLocalSein` no teleporte e `SIO_UDP_CONNRESET` no
+servidor/cliente. **Reinicie o servidor** para valer o fix de UDP.
 Resultado da rodada: **a confirmar** — rodar com 2 clientes e anotar aqui
 data e itens pendentes.
 
@@ -392,6 +393,8 @@ data e itens pendentes.
 | Teleporte indisponivel | use `/coop tp on`, mantenha dois jogadores conectados e aguarde snapshots; `T` teleporta para o remoto mais proximo e `/tp <origem> <destino>` continua disponivel |
 | Ori parado vira sprite de inimigo | **Fallback de anim contaminado por clipes globais**: `AnimationRegistry.Prewarm` usava `Resources.FindObjectsOfTypeAll` (inclui Kuro, slugs, owls...) e `s_stateClips` ficava com o primeiro `idle` achado, que podia ser de inimigo; além disso `TextureAnimationWithTransitions` é `ScriptableObject`, então `GetComponentsInChildren<...>` no puppet nunca achava nada. **Solução aplicada (build 76.800 bytes, 2026-10-05, a confirmar em jogo)**: coleta via reflection nos campos do Sein (`CollectClips`), fallback por estado só com clipes do Sein, resolve exato (hash/nome = mesmo asset compartilhado) com prioridade. Feche o jogo antes de copiar a DLL (arquivo fica bloqueado com `OriDE.exe` aberto). |
 | Bash/Dash/Glide/Stomp/ChargeJump/DoubleJump/WallSlide não aparecem no remoto | **Sender derivava estado só por velocidade** (`DeriveState` só conhecia Idle/Run/Jump/Fall). **Solução aplicada (mesmo build)**: `PlayerStateReader` lê `IsOnGround` real + `Controller.IsBashing/IsStomping/IsDashing/IsGliding/IsChargingJump/IsGrabbingWall` com prioridade, e o nome do clipe local como autoridade para estados especiais. |
+| Flood `[WARNING] [SERVER] A UDP client connection was reset` (~5/s) | **ICMP Port Unreachable no Windows**: ao enviar snapshot para endpoint morto (cliente fechado sem DISCONNECT), o próximo `EndReceive` estourava `ConnectionReset`. **Solução aplicada (Core 35.328 bytes, 2026-10-05)**: `SIO_UDP_CONNRESET` no listener (e no recriado) + warning com throttle de 5 s. Mesmo flag no `UdpClient` do mod. Exige **reiniciar o servidor**. |
+| `T` / `/tp` não teleporta: `Teleport recebido, mas o objeto Sein local nao foi encontrado` | **`GameObject.Find("Sein")` não acha `Sein(Clone)`** (nome do save carregado). **Solução aplicada (DLL 78.336 bytes, 2026-10-05)**: `FindLocalSein()` (singleton → `FindObjectsOfType<SeinCharacter>` → paths incl. `Sein(Clone)`), aplicação via setter oficial `SeinCharacter.Position` com fallback para transform + log imediato `ori-agora=(x,y,z)` para conferir a alteração de valor; `EnsureCameraFollowsLocalPlayer` usa o mesmo helper. |
 | DLL nao pode ser copiada | encerre o jogo e `OriCoopDedicatedServer.exe` |
 | Servidor cheio | reduza conexoes ou inicie com maximo entre 1 e 10 |
 | Cliente LAN nao conecta | confirme o IPv4 `LAN address`, a porta UDP, o firewall do host e se todos estao na mesma rede |

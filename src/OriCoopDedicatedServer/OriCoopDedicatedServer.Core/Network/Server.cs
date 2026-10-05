@@ -15,6 +15,14 @@ public static class Server
 	private static UdpClient _udpListener;
 	private static readonly object _udpListenerLock = new object();
 
+	// Flood de "connection was reset": no Windows, um UdpClient que enviou
+	// datagrama para um endpoint morto recebe ICMP Port Unreachable e o
+	// proximo EndReceive estoura SocketError.ConnectionReset. Como o relay
+	// envia snapshots sem parar, um cliente fechado sem DISCONNECT gera um
+	// warning por pacote. SIO_UDP_CONNRESET faz o socket ignorar o ICMP.
+	private const int SIO_UDP_CONNRESET = -1744830452;
+	private static DateTime _lastResetWarnUtc = DateTime.MinValue;
+
 	public static int LatesNetId = 0;
 
 	public static bool EnableFakePackets = false;
@@ -34,6 +42,7 @@ public static class Server
 		Logger.Info("SERVER", "Starting server...");
 		InitializeServerData();
 		_udpListener = new UdpClient(new IPEndPoint(IPAddress.Any, Port));
+		DisableUdpConnectionReset(_udpListener);
 		_udpListener.BeginReceive(UDPReciveCallback, null);
 		Logger.Info("SERVER", $"Server started on {Port} maxplayers: {MaxPlayers}");
 		LogLanAddresses();
@@ -80,7 +89,7 @@ public static class Server
 		}
 		catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
 		{
-			Logger.Warning("SERVER", "A UDP client connection was reset; continuing to listen.");
+			ThrottledResetWarning("A UDP client connection was reset; continuing to listen.");
 		}
 		catch (Exception arg)
 		{
@@ -116,6 +125,7 @@ public static class Server
 				{
 					_udpListener.Close();
 					_udpListener = new UdpClient(new IPEndPoint(IPAddress.Any, Port));
+					DisableUdpConnectionReset(_udpListener);
 					_udpListener.BeginReceive(UDPReciveCallback, null);
 					Logger.Info("SERVER", $"UDP listener restarted on {Port}.");
 				}
@@ -128,6 +138,31 @@ public static class Server
 			{
 				Logger.Error("SERVER", $"FAILED TO RESTART UDP RECEIVE: {ex}");
 			}
+		}
+	}
+
+	private static void DisableUdpConnectionReset(UdpClient udp)
+	{
+		try
+		{
+			if (udp != null && udp.Client != null)
+			{
+				udp.Client.IOControl((IOControlCode)SIO_UDP_CONNRESET, new byte[] { 0, 0, 0, 0 }, null);
+			}
+		}
+		catch
+		{
+			// Plataforma sem suporte ao IOControl: mantém comportamento anterior.
+		}
+	}
+
+	private static void ThrottledResetWarning(string message)
+	{
+		DateTime now = DateTime.UtcNow;
+		if ((now - _lastResetWarnUtc).TotalSeconds >= 5.0)
+		{
+			_lastResetWarnUtc = now;
+			Logger.Warning("SERVER", message);
 		}
 	}
 

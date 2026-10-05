@@ -320,24 +320,30 @@ namespace OriCoopBepInEx.Plugin
             {
                 _mainThreadActions.Enqueue(delegate
                 {
-                    UnityEngine.GameObject sein = UnityEngine.GameObject.Find("Characters/Sein");
-                    if (sein == null)
-                    {
-                        sein = UnityEngine.GameObject.Find("Sein");
-                    }
-                    if (sein == null)
+                    SeinCharacter seinChar = FindLocalSein();
+                    if (seinChar == null)
                     {
                         Logger.LogWarning("Teleport recebido, mas o objeto Sein local nao foi encontrado.");
                         return;
                     }
+                    GameObject sein = seinChar.gameObject;
 
                     // BUG #3: so trocar transform.position nao bastava — o controlador
                     // de fisica do Sein mantinha velocidade residual e a camera nao
-                    // acompanhava, parecendo que "nada aconteceu".
+                    // acompanhava, parecendo que "nada aconteceu". Usa o setter
+                    // oficial SeinCharacter.Position (roteado pelo jogo) e zera
+                    // Rigidbody/Speed como garantia, verificando a fixacao em 0.5 s.
                     Vector3 dest = new UnityEngine.Vector3(position.X, position.Y, position.Z);
                     try
                     {
-                        sein.transform.position = dest;
+                        try
+                        {
+                            seinChar.Position = dest;
+                        }
+                        catch
+                        {
+                            sein.transform.position = dest;
+                        }
 
                         Rigidbody rb = sein.GetComponent<Rigidbody>();
                         if (rb != null)
@@ -348,18 +354,19 @@ namespace OriCoopBepInEx.Plugin
 
                         try
                         {
-                            Component seinComp = sein.GetComponent<SeinCharacter>();
-                            if (seinComp != null)
+                            System.Reflection.PropertyInfo speedProp =
+                                typeof(SeinCharacter).GetProperty("Speed");
+                            if (speedProp != null && speedProp.CanWrite)
                             {
-                                System.Reflection.PropertyInfo speedProp =
-                                    typeof(SeinCharacter).GetProperty("Speed");
-                                if (speedProp != null && speedProp.CanWrite)
-                                {
-                                    speedProp.SetValue(seinComp, Vector3.zero, null);
-                                }
+                                speedProp.SetValue(seinChar, Vector3.zero, null);
                             }
                         }
                         catch { }
+
+                        // Confirma a alteracao de valor lendo de volta na hora.
+                        Vector3 now = sein.transform.position;
+                        Logger.LogInfo(string.Format("Teleporte aplicado: pedido=({0:F1},{1:F1},{2:F1}) ori-agora=({3:F1},{4:F1},{5:F1})",
+                            position.X, position.Y, position.Z, now.x, now.y, now.z));
                     }
                     catch (Exception ex)
                     {
@@ -475,27 +482,74 @@ namespace OriCoopBepInEx.Plugin
             }
         }
 
+        // Localiza o Sein do jogador local. GameObject.Find("Sein") NAO basta:
+        // no save carregado o objeto chama "Sein(Clone)" (e o path varia),
+        // então o singleton + varredura por tipo vêm primeiro. Com puppets
+        // leves não existem clones com SeinCharacter, então a varredura por
+        // tipo retorna exatamente o jogador local.
+        public static SeinCharacter FindLocalSein()
+        {
+            try
+            {
+                SeinCharacter singleton = Game.Characters.Sein;
+                if (singleton != null && singleton.gameObject != null)
+                {
+                    return singleton;
+                }
+            }
+            catch { }
+
+            try
+            {
+                SeinCharacter[] all = UnityEngine.Object.FindObjectsOfType<SeinCharacter>();
+                if (all != null)
+                {
+                    for (int i = 0; i < all.Length; i++)
+                    {
+                        if (all[i] != null && all[i].gameObject != null && all[i].gameObject.activeInHierarchy)
+                        {
+                            return all[i];
+                        }
+                    }
+                    for (int i = 0; i < all.Length; i++)
+                    {
+                        if (all[i] != null && all[i].gameObject != null)
+                        {
+                            return all[i];
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            try
+            {
+                GameObject go = UnityEngine.GameObject.Find("Characters/Sein")
+                    ?? UnityEngine.GameObject.Find("Sein")
+                    ?? UnityEngine.GameObject.Find("Sein(Clone)")
+                    ?? UnityEngine.GameObject.Find("Characters/Sein(Clone)");
+                if (go != null)
+                {
+                    return go.GetComponent<SeinCharacter>();
+                }
+            }
+            catch { }
+
+            return null;
+        }
+
         public static void EnsureCameraFollowsLocalPlayer()
         {
             try
             {
-                SeinCharacter sein = Game.Characters.Sein;
-                if (sein == null)
-                {
-                    UnityEngine.GameObject seinObj = UnityEngine.GameObject.Find("Characters/Sein") ?? UnityEngine.GameObject.Find("Sein");
-                    if (seinObj != null)
-                    {
-                        sein = seinObj.GetComponent<SeinCharacter>();
-                        if (sein != null)
-                        {
-                            Game.Characters.Sein = sein;
-                            Game.Characters.Current = sein;
-                        }
-                    }
-                }
+                SeinCharacter sein = FindLocalSein();
 
                 if (sein != null)
                 {
+                    if (Game.Characters.Sein == null)
+                    {
+                        Game.Characters.Sein = sein;
+                    }
                     if (Game.Characters.Current == null || (Game.Characters.Current as UnityEngine.Component) != sein)
                     {
                         Game.Characters.Current = sein;
