@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Game;
 using UnityEngine;
 
@@ -6,122 +7,166 @@ namespace OriCoopBepInEx.Client
 {
     public static class RemotePuppetFactory
     {
-        private static GameObject s_templatePrefab;
+        private static bool s_seinClipsRegistered;
 
         public static RemotePlayerPuppet CreatePuppet(int playerId, string nickname, Vector3 initialPosition)
         {
-            EnsureTemplate();
-
-            if (s_templatePrefab == null)
+            GameObject seinGo = FindSeinObject();
+            if (seinGo == null)
             {
-                Debug.LogWarning("[OriCoop] Template prefab could not be initialized from Game.Characters.Sein.");
+                Debug.LogWarning("[OriCoop] Sein não encontrado; puppet remoto não criado.");
                 return null;
             }
 
-            SeinCharacter originalSein = Game.Characters.Sein;
-            ICharacter originalCurrent = Game.Characters.Current;
+            EnsureSeinClips(seinGo);
 
-            GameObject instance = null;
+            // Puppet leve: em vez de clonar o Sein inteiro (raiz com
+            // singletons Game.Characters.Sein/Current, câmera, física e
+            // dezenas de scripts), instancia SÓ a subárvore visual que
+            // contém o SpriteAnimatorWithTransitions. Nenhum Awake de
+            // gameplay roda, nenhum singleton é tocado.
+            SpriteAnimatorWithTransitions[] animators;
             try
             {
-                instance = UnityEngine.Object.Instantiate(s_templatePrefab, initialPosition, Quaternion.identity) as GameObject;
-                if (instance == null)
+                animators = seinGo.GetComponentsInChildren<SpriteAnimatorWithTransitions>(true);
+            }
+            catch
+            {
+                animators = null;
+            }
+            if (animators == null || animators.Length == 0)
+            {
+                Debug.LogWarning("[OriCoop] Nenhum animator visual no Sein; puppet remoto não criado.");
+                return null;
+            }
+
+            GameObject root = new GameObject(string.Format("RemotePlayer_{0}_{1}", playerId, nickname));
+            root.transform.position = initialPosition;
+
+            int visualsCopied = 0;
+            for (int i = 0; i < animators.Length; i++)
+            {
+                SpriteAnimatorWithTransitions src = animators[i];
+                if (src == null || src.gameObject == null)
                 {
-                    return null;
+                    continue;
                 }
-
-                instance.name = string.Format("RemotePlayer_{0}_{1}", playerId, nickname);
-                RemotePlayerPuppet puppet = instance.GetComponent<RemotePlayerPuppet>() ?? instance.AddComponent<RemotePlayerPuppet>();
-                puppet.Setup(playerId, nickname);
-
+                GameObject srcGo = src.gameObject;
+                GameObject clone = null;
                 try
                 {
-                    instance.SetActive(true);
+                    clone = UnityEngine.Object.Instantiate(srcGo) as GameObject;
                 }
-                catch (Exception ex)
+                catch
                 {
-                    Debug.LogWarning("[OriCoop] Non-fatal exception activating puppet: " + ex.Message);
+                    clone = null;
                 }
+                if (clone == null)
+                {
+                    continue;
+                }
+                clone.name = srcGo.name;
+                try
+                {
+                    clone.transform.SetParent(root.transform, false);
+                    clone.transform.localPosition = srcGo.transform.localPosition;
+                    clone.transform.localRotation = srcGo.transform.localRotation;
+                    clone.transform.localScale = srcGo.transform.localScale;
+                }
+                catch { }
+                CleanPuppetComponents(clone);
+                visualsCopied++;
+            }
 
-                UnityEngine.Object.DontDestroyOnLoad(instance);
-                return puppet;
-            }
-            finally
+            if (visualsCopied == 0)
             {
-                if (originalSein != null && Game.Characters.Sein != originalSein)
-                {
-                    Game.Characters.Sein = originalSein;
-                }
-                if (originalCurrent != null && Game.Characters.Current != originalCurrent)
-                {
-                    Game.Characters.Current = originalCurrent;
-                }
-                Plugin.OriCoopPlugin.EnsureCameraFollowsLocalPlayer();
+                try { UnityEngine.Object.Destroy(root); }
+                catch { }
+                return null;
             }
+
+            // Espelho de sprite: vem junto se estava na subárvore visual;
+            // senão cria um novo copiando o FaceLeft atual.
+            try
+            {
+                if (root.GetComponentInChildren<CharacterSpriteMirror>() == null)
+                {
+                    CharacterSpriteMirror srcMirror = seinGo.GetComponentInChildren<CharacterSpriteMirror>();
+                    CharacterSpriteMirror mirror = root.AddComponent<CharacterSpriteMirror>();
+                    if (srcMirror != null && mirror != null)
+                    {
+                        try { mirror.FaceLeft = srcMirror.FaceLeft; }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+
+            RemoteVisualController.StripFrustumOptimizers(root);
+            RemoteVisualController.StripExtraLights(root);
+
+            RemotePlayerPuppet puppet = null;
+            try
+            {
+                puppet = root.AddComponent<RemotePlayerPuppet>();
+                puppet.Setup(playerId, nickname);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[OriCoop] Falha ao montar puppet leve: " + ex.Message);
+                try { UnityEngine.Object.Destroy(root); }
+                catch { }
+                return null;
+            }
+
+            try
+            {
+                root.SetActive(true);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[OriCoop] Non-fatal exception activating puppet: " + ex.Message);
+            }
+
+            UnityEngine.Object.DontDestroyOnLoad(root);
+            Plugin.OriCoopPlugin.EnsureCameraFollowsLocalPlayer();
+            return puppet;
         }
 
-        private static void EnsureTemplate()
+        private static GameObject FindSeinObject()
         {
-            if (s_templatePrefab != null)
-            {
-                return;
-            }
-
-            GameObject sein = null;
-            if (Game.Characters.Sein != null)
-            {
-                sein = Game.Characters.Sein.gameObject;
-            }
-            if (sein == null)
-            {
-                sein = GameObject.Find("Characters/Sein") ?? GameObject.Find("Sein");
-            }
-            if (sein == null)
-            {
-                return;
-            }
-
-            SeinCharacter originalSein = Game.Characters.Sein;
-            ICharacter originalCurrent = Game.Characters.Current;
-
             try
             {
-                // Temporarily deactivate source object so clone is instantiated inactive,
-                // preventing Awake() or OnEnable() from running on any components during cloning.
-                bool wasActive = sein.activeSelf;
-                sein.SetActive(false);
-                try
+                if (Game.Characters.Sein != null && Game.Characters.Sein.gameObject != null)
                 {
-                    s_templatePrefab = UnityEngine.Object.Instantiate(sein) as GameObject;
+                    return Game.Characters.Sein.gameObject;
                 }
-                finally
-                {
-                    sein.SetActive(wasActive);
-                }
-
-                if (s_templatePrefab == null)
-                {
-                    return;
-                }
-
-                s_templatePrefab.name = "RemotePlayer_Template";
-                s_templatePrefab.SetActive(false);
-                UnityEngine.Object.DontDestroyOnLoad(s_templatePrefab);
-
-                CleanPuppetComponents(s_templatePrefab);
             }
-            finally
+            catch { }
+            GameObject go = GameObject.Find("Characters/Sein");
+            if (go == null)
             {
-                if (originalSein != null)
-                {
-                    Game.Characters.Sein = originalSein;
-                }
-                if (originalCurrent != null)
-                {
-                    Game.Characters.Current = originalCurrent;
-                }
-                Plugin.OriCoopPlugin.EnsureCameraFollowsLocalPlayer();
+                go = GameObject.Find("Sein");
             }
+            return go;
+        }
+
+        private static void EnsureSeinClips(GameObject seinGo)
+        {
+            if (s_seinClipsRegistered)
+            {
+                return;
+            }
+            try
+            {
+                List<TextureAnimationWithTransitions> clips = AnimationRegistry.CollectClips(seinGo);
+                if (clips != null && clips.Count > 0)
+                {
+                    AnimationRegistry.RegisterSeinClips(clips);
+                    s_seinClipsRegistered = true;
+                }
+            }
+            catch { }
         }
 
         private static void CleanPuppetComponents(GameObject root)

@@ -150,7 +150,9 @@ outras fases.
   `Resolve`, `InferStateFromMovement`) — catálogo por substring e thresholds
   atuais (`|vx|>0.4`, `vy±1.0`).
 - `src/OriCoopPlus/OriCoopBepInEx/Client/RemotePuppetFactory.cs`
-  (`EnsureTemplate`, `CleanPuppetComponents`) — clonagem inativa do Sein,
+  (`CreatePuppet`, `CleanPuppetComponents`) — puppet leve: instancia só a
+  subárvore visual do Sein (2026-10-05; antes: clonagem inativa do Sein
+  inteiro via `EnsureTemplate`),
   whitelist de componentes, CAS preservado-desligado (bug #2).
 - `src/OriCoopPlus/OriCoopBepInEx/Client/RemoteVisualController.cs` — material
   próprio por puppet, `StripExtraLights`, watchdog de visibilidade (não tocar

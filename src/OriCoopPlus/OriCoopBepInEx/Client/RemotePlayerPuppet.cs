@@ -142,18 +142,28 @@ namespace OriCoopBepInEx.Client
                 try { AnimationRegistry.Prewarm(); } catch { }
             }
 
-            TextureAnimationWithTransitions targetClip = AnimationRegistry.Resolve(animName, animHash, confirmedState);
+            TextureAnimationWithTransitions targetClip;
+            // Exato primeiro: hash/nome do sender apontam para o MESMO asset
+            // compartilhado — sempre correto. Fallback por estado só usa
+            // clipes comprovadamente do Sein (nunca inimigo).
+            if (!AnimationRegistry.TryResolveExact(animName, animHash, out targetClip))
+            {
+                AnimationRegistry.TryResolveState(confirmedState, out targetClip);
+            }
 
             if (targetClip == null)
             {
                 try
                 {
-                    TextureAnimationWithTransitions[] local =
-                        GetComponentsInChildren<TextureAnimationWithTransitions>(true);
-                    if (local != null && local.Length > 0)
+                    System.Collections.Generic.List<TextureAnimationWithTransitions> local =
+                        AnimationRegistry.CollectClips(gameObject);
+                    if (local != null && local.Count > 0)
                     {
-                        AnimationRegistry.RegisterClips(local);
-                        targetClip = AnimationRegistry.Resolve(animName, animHash, confirmedState);
+                        AnimationRegistry.RegisterSeinClips(local);
+                        if (!AnimationRegistry.TryResolveExact(animName, animHash, out targetClip))
+                        {
+                            AnimationRegistry.TryResolveState(confirmedState, out targetClip);
+                        }
                     }
                 }
                 catch { }
@@ -206,19 +216,26 @@ namespace OriCoopBepInEx.Client
             // isGrounded e heuristico: queda/subida forte indica arco aereo.
             bool isGrounded = Mathf.Abs(_velocity.y) < 1.0f;
             ActionVisualState fallbackState = AnimationRegistry.InferStateFromMovement(_velocity, isGrounded);
-            TextureAnimationWithTransitions targetClip = AnimationRegistry.Resolve(animName, animHash, fallbackState);
+            TextureAnimationWithTransitions targetClip;
+            if (!AnimationRegistry.TryResolveExact(animName, animHash, out targetClip))
+            {
+                AnimationRegistry.TryResolveState(fallbackState, out targetClip);
+            }
 
-            // Ultima tentativa: cataloga clipes visiveis no puppet e resolve de novo.
+            // Ultima tentativa: cataloga clipes do proprio puppet e resolve de novo.
             if (targetClip == null)
             {
                 try
                 {
-                    TextureAnimationWithTransitions[] local =
-                        GetComponentsInChildren<TextureAnimationWithTransitions>(true);
-                    if (local != null && local.Length > 0)
+                    System.Collections.Generic.List<TextureAnimationWithTransitions> local =
+                        AnimationRegistry.CollectClips(gameObject);
+                    if (local != null && local.Count > 0)
                     {
-                        AnimationRegistry.RegisterClips(local);
-                        targetClip = AnimationRegistry.Resolve(animName, animHash, fallbackState);
+                        AnimationRegistry.RegisterSeinClips(local);
+                        if (!AnimationRegistry.TryResolveExact(animName, animHash, out targetClip))
+                        {
+                            AnimationRegistry.TryResolveState(fallbackState, out targetClip);
+                        }
                     }
                 }
                 catch { }

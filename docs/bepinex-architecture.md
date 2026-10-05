@@ -40,12 +40,13 @@ Plugin/OriCoopPlugin
 - **Client (Entidades Remotas e Visibilidade):**
   - `RemotePlayerManager`: Cria, atualiza e descarta instâncias de `RemotePlayerPuppet`
     conforme snapshots são recebidos ou jogadores desconectam.
-  - `RemotePuppetFactory`: Clona a hierarquia visual de `Game.Characters.Sein`.
-    A fonte e temporariamente desativada antes do `Instantiate` para impedir que `Awake()`
-    ou `OnEnable()` sejam disparados no clone. As referencias globais `Game.Characters.Sein` e
-    `Game.Characters.Current` sao estritamente preservadas e restauradas em blocos `try/finally`
-    (com auxilio de `EnsureCameraFollowsLocalPlayer()`) para evitar anulacao da entidade local.
-    A limpeza por *whitelist* elimina filhos sem renderizadores/animadores, desativa imediatamente
+  - `RemotePuppetFactory`: Puppet leve — instancia SÓ a subárvore visual de
+    `Game.Characters.Sein` (o `GameObject` que contém cada
+    `SpriteAnimatorWithTransitions`), sem clonar a raiz do Sein. Nenhum
+    `Awake` de gameplay roda e nenhum singleton (`Game.Characters.Sein` /
+    `Current`) é tocado, então não há mais desativação transitória nem
+    `try/finally` de preservação (mantido só `EnsureCameraFollowsLocalPlayer()`
+    como segurança). A limpeza por *whitelist* elimina filhos sem renderizadores/animadores, desativa imediatamente
     todos os `Behaviour` restantes e destroi colisores, rigidbodies, audios e MonoBehaviours que
     nao sejam puramente visuais (`SpriteAnimatorWithTransitions`, `CharacterSpriteMirror`,
     `RemotePlayerPuppet`, `RemoteVisualController`), prevenindo a execucao concorrente de dezenas
