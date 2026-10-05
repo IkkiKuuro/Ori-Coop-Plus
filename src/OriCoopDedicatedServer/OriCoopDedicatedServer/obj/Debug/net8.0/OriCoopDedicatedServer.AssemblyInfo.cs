@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("OriCoopDedicatedServer")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d56f9a5d18f76cc66bf069752d367d01aa7dc238")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+044f0c7450ff520f15dbb0599846f09e757d51d7")]
 [assembly: System.Reflection.AssemblyProductAttribute("OriCoopDedicatedServer")]
 [assembly: System.Reflection.AssemblyTitleAttribute("OriCoopDedicatedServer")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
