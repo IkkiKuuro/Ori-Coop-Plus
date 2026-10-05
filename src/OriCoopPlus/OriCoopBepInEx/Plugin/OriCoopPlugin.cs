@@ -215,6 +215,19 @@ namespace OriCoopBepInEx.Plugin
             }
         }
 
+        public void DumpAnimCatalog()
+        {
+            try
+            {
+                AnimationRegistry.DumpCatalog();
+                Logger.LogInfo("Catalogo de animacoes despejado no log ([ANIM-DUMP]).");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning("Falha ao despejar catalogo de animacoes: " + ex.Message);
+            }
+        }
+
         public void SetVerboseLogging(bool enabled)
         {
             ShowNetworkLogs = enabled;
@@ -619,6 +632,11 @@ namespace OriCoopBepInEx.Plugin
             if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.T))
             {
                 TeleportToNearestPartner();
+            }
+
+            if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.F8))
+            {
+                DumpAnimCatalog();
             }
         }
 

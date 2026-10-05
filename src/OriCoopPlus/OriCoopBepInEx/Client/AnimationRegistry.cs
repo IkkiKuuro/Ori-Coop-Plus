@@ -11,8 +11,63 @@ namespace OriCoopBepInEx.Client
             new Dictionary<uint, TextureAnimationWithTransitions>();
         private static readonly Dictionary<string, TextureAnimationWithTransitions> s_animNameCache =
             new Dictionary<string, TextureAnimationWithTransitions>(StringComparer.OrdinalIgnoreCase);
-        private static readonly Dictionary<ActionVisualState, TextureAnimationWithTransitions> s_fallbackStates =
+        private static readonly Dictionary<ActionVisualState, TextureAnimationWithTransitions> s_stateClips =
             new Dictionary<ActionVisualState, TextureAnimationWithTransitions>();
+
+        // SEED: aliases best-effort — calibrar nomes exatos via dump F8
+        // (plano 02). Miss aqui nunca vira sprite aleatório: resolve
+        // desconhecido retorna null e o puppet mantém a última anim.
+        private static readonly Dictionary<string, ActionVisualState> s_nameToState =
+            new Dictionary<string, ActionVisualState>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "idle", ActionVisualState.Idle },
+                { "oriidle", ActionVisualState.Idle },
+                { "seinidle", ActionVisualState.Idle },
+                { "stand", ActionVisualState.Idle },
+                { "oristand", ActionVisualState.Idle },
+                { "run", ActionVisualState.Running },
+                { "running", ActionVisualState.Running },
+                { "orirun", ActionVisualState.Running },
+                { "seinrun", ActionVisualState.Running },
+                { "jump", ActionVisualState.Jump },
+                { "orijump", ActionVisualState.Jump },
+                { "seinjump", ActionVisualState.Jump },
+                { "jumpup", ActionVisualState.Jump },
+                { "rise", ActionVisualState.Jump },
+                { "doublejump", ActionVisualState.DoubleJump },
+                { "oridoublejump", ActionVisualState.DoubleJump },
+                { "flip", ActionVisualState.DoubleJump },
+                { "fall", ActionVisualState.Falling },
+                { "falling", ActionVisualState.Falling },
+                { "orifall", ActionVisualState.Falling },
+                { "seinfall", ActionVisualState.Falling },
+                { "drop", ActionVisualState.Falling },
+                { "wallslide", ActionVisualState.WallSlide },
+                { "oriwallslide", ActionVisualState.WallSlide },
+                { "slide", ActionVisualState.WallSlide },
+                { "walljump", ActionVisualState.WallJump },
+                { "oriwalljump", ActionVisualState.WallJump },
+                { "bash", ActionVisualState.Bash },
+                { "oribash", ActionVisualState.Bash },
+                { "seinbash", ActionVisualState.Bash },
+                { "glide", ActionVisualState.Glide },
+                { "origlide", ActionVisualState.Glide },
+                { "seinglide", ActionVisualState.Glide },
+                { "feather", ActionVisualState.Glide },
+                { "slowfall", ActionVisualState.Glide },
+                { "chargejump", ActionVisualState.ChargeJump },
+                { "orichargejump", ActionVisualState.ChargeJump },
+                { "charge", ActionVisualState.ChargeJump },
+                { "stomp", ActionVisualState.Stomp },
+                { "oristomp", ActionVisualState.Stomp },
+                { "seinstomp", ActionVisualState.Stomp },
+                { "groundpound", ActionVisualState.Stomp },
+                { "dash", ActionVisualState.Dash },
+                { "oridash", ActionVisualState.Dash },
+                { "seindash", ActionVisualState.Dash },
+                { "airdash", ActionVisualState.Dash },
+                { "chargedash", ActionVisualState.Dash },
+            };
 
         public static bool IsPrewarmed { get; private set; }
 
@@ -50,36 +105,26 @@ namespace OriCoopBepInEx.Client
                 s_animHashCache[hash] = clip;
                 s_animNameCache[clip.name] = clip;
 
-                string lower = clip.name.ToLower();
-                if (lower.Contains("idle") && !s_fallbackStates.ContainsKey(ActionVisualState.Idle))
+                ActionVisualState mappedState;
+                if (s_nameToState.TryGetValue(clip.name, out mappedState)
+                    && !s_stateClips.ContainsKey(mappedState))
                 {
-                    s_fallbackStates[ActionVisualState.Idle] = clip;
-                }
-                else if (lower.Contains("run") && !s_fallbackStates.ContainsKey(ActionVisualState.Running))
-                {
-                    s_fallbackStates[ActionVisualState.Running] = clip;
-                }
-                else if (lower.Contains("jump") && !lower.Contains("double") && !s_fallbackStates.ContainsKey(ActionVisualState.Jump))
-                {
-                    s_fallbackStates[ActionVisualState.Jump] = clip;
-                }
-                else if (lower.Contains("doublejump") && !s_fallbackStates.ContainsKey(ActionVisualState.DoubleJump))
-                {
-                    s_fallbackStates[ActionVisualState.DoubleJump] = clip;
-                }
-                else if (lower.Contains("fall") && !s_fallbackStates.ContainsKey(ActionVisualState.Falling))
-                {
-                    s_fallbackStates[ActionVisualState.Falling] = clip;
-                }
-                else if (lower.Contains("wallslide") && !s_fallbackStates.ContainsKey(ActionVisualState.WallSlide))
-                {
-                    s_fallbackStates[ActionVisualState.WallSlide] = clip;
-                }
-                else if (lower.Contains("bash") && !s_fallbackStates.ContainsKey(ActionVisualState.Bash))
-                {
-                    s_fallbackStates[ActionVisualState.Bash] = clip;
+                    s_stateClips[mappedState] = clip;
                 }
             }
+        }
+
+        public static void DumpCatalog()
+        {
+            foreach (KeyValuePair<string, TextureAnimationWithTransitions> entry in s_animNameCache)
+            {
+                ActionVisualState mapped;
+                string stateText = s_nameToState.TryGetValue(entry.Key, out mapped)
+                    ? mapped.ToString() : "UNKNOWN";
+                Debug.Log(string.Format("[ANIM-DUMP] name={0} hash=0x{1:X8} estado?={2}",
+                    entry.Key, AnimationSyncData.ComputeFnv1aHash(entry.Key), stateText));
+            }
+            Debug.Log(string.Format("[OriCoop] ANIM-DUMP concluído: {0} clipes.", s_animNameCache.Count));
         }
 
         public static TextureAnimationWithTransitions Resolve(string animName, uint animHash, ActionVisualState fallbackState)
@@ -96,16 +141,13 @@ namespace OriCoopBepInEx.Client
                 return result;
             }
 
-            if (s_fallbackStates.TryGetValue(fallbackState, out result))
+            if (s_stateClips.TryGetValue(fallbackState, out result))
             {
                 return result;
             }
 
-            if (s_fallbackStates.TryGetValue(ActionVisualState.Idle, out result))
-            {
-                return result;
-            }
-
+            // Desconhecido: retorna null e o chamador mantém a última anim
+            // (fail-closed). Sem chute para Idle genérico.
             return null;
         }
 

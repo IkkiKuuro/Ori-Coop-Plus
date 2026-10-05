@@ -52,28 +52,42 @@ namespace OriCoop
             return hash;
         }
 
+        public const float RunEnterSpeed = 0.6f;
+        public const float RunExitSpeed = 0.3f;
+
         public static ActionVisualState DeriveState(float speedX, float speedY, bool isGrounded)
+        {
+            return DeriveState(speedX, speedY, isGrounded, ActionVisualState.Idle);
+        }
+
+        public static ActionVisualState DeriveState(float speedX, float speedY, bool isGrounded, ActionVisualState lastState)
         {
             if (!isGrounded)
             {
+                if (speedY > 1.0f)
+                {
+                    return ActionVisualState.Jump;
+                }
                 if (speedY < -1.0f)
                 {
                     return ActionVisualState.Falling;
                 }
-                if (speedY > 1.0f)
+                if (lastState == ActionVisualState.Jump
+                    || lastState == ActionVisualState.DoubleJump
+                    || lastState == ActionVisualState.Falling
+                    || lastState == ActionVisualState.Glide)
                 {
-                    return ActionVisualState.Jump;
+                    return lastState;
                 }
                 return ActionVisualState.Falling;
             }
 
             float horizontalSpeed = speedX >= 0f ? speedX : -speedX;
-            if (horizontalSpeed > 0.4f)
+            if (lastState == ActionVisualState.Running)
             {
-                return ActionVisualState.Running;
+                return horizontalSpeed > RunExitSpeed ? ActionVisualState.Running : ActionVisualState.Idle;
             }
-
-            return ActionVisualState.Idle;
+            return horizontalSpeed > RunEnterSpeed ? ActionVisualState.Running : ActionVisualState.Idle;
         }
     }
 }

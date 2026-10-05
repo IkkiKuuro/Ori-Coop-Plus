@@ -7,6 +7,8 @@ namespace OriCoopBepInEx.Patches
 {
     internal static class PlayerStateReader
     {
+        private static ActionVisualState s_lastDerivedState = ActionVisualState.Idle;
+
         public static PlayerSnapshot Read(object seinCharacterInstance)
         {
             SeinCharacter sein = seinCharacterInstance as SeinCharacter;
@@ -38,7 +40,8 @@ namespace OriCoopBepInEx.Patches
             // heurística provisória até o plano 02.
             snapshot.Animation.IsGrounded = Mathf.Abs(speed.y) < 1.0f;
             snapshot.Animation.State = AnimationSyncData.DeriveState(
-                speed.x, speed.y, snapshot.Animation.IsGrounded);
+                speed.x, speed.y, snapshot.Animation.IsGrounded, s_lastDerivedState);
+            s_lastDerivedState = snapshot.Animation.State;
             snapshot.Animation.AnimNameHash = AnimationSyncData.ComputeFnv1aHash(
                 snapshot.Animation.Name);
             snapshot.Timestamp = DateTime.UtcNow.Ticks;
