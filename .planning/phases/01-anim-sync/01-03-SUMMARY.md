@@ -53,9 +53,11 @@ coverage:
     human_judgment: false
   - id: D2
     description: "Servidor (relay + dummy) compila e opera só com pacote 18"
-    verification: []
-    human_judgment: true
-    rationale: "Sem SDK dotnet nesta máquina; relay revisado manualmente, build do servidor pendente"
+    verification:
+      - kind: other
+        ref: "dotnet build Release: 0 erros (9 warnings nulabilidade pré-existentes); smoke --auto porta 7779: Server started + módulo CARREGADO"
+        status: pass
+    human_judgment: false
   - id: D3
     description: "Heartbeat ~2.5 pkt/s parado, envio imediato em mudança, regressão OK"
     verification: []
