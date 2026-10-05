@@ -22,6 +22,7 @@ ser alterados com extremo cuidado:
 | 15 | `TELEPORT_REQUEST` | pedido cliente-servidor ou resposta servidor-cliente |
 | 16 | `CONFIG_SYNC` | configuracao do servidor |
 | 17 | `DUMMY_ACTION` | acao do bot de teste |
+| 18 | `PLAYER_STATE` | estado unificado posicao+animacao (substitui `POSITION`+`ANIM` fragmentados) |
 
 `CoopSkillType` atualmente diferencia `NONE`, `Spirit` e `Stomp`.
 
@@ -88,7 +89,22 @@ O pacote negativo `-7` e reservado para ping. O cliente envia um envelope com
 tempo de ida e volta em milissegundos. Esse valor e exibido para cada jogador
 no HUD do cliente.
 
-## Fragmentacao POSITION/ANIM (causa raiz do bug #2)
+## Pacote unificado PLAYER_STATE (18)
+
+`PLAYER_STATE` carrega, nesta ordem: `int playerId`, `Vector3 pos` (3 floats),
+`byte state` (`ActionVisualState` — autoridade da animacao),
+`byte flags` (bit 0 `FacingLeft`, bit 1 `IsGrounded`),
+`int animHash` (`uint` FNV1a reinterpretado como `int`, pois o `Packet` do
+servidor nao possui `Write(uint)`), `float speedX`, `float speedY` (velocidade
+real do `Sein.Speed`) e `string nick` no formato legado (`int32` + ASCII).
+O servidor retransmite os bytes como recebeu, reescrevendo apenas `playerId`
+e `nick`, sem fundir nem inferir nada.
+
+`POSITION` (1) + `ANIM` (2) fragmentados estão depreciados e serão removidos
+no passo seguinte do rework (sem compatibilidade retroativa: cliente e
+servidor sempre do mesmo build).
+
+## Fragmentacao POSITION/ANIM (causa raiz do bug #2 — legado em remocao)
 
 `POSITION` (1) carrega `int playerId`, `Vector3 pos`, `Color RGB (3 bytes)`,
 `bool facingLeft`, `string nick` — mas **nao** carrega velocidade nem nome de

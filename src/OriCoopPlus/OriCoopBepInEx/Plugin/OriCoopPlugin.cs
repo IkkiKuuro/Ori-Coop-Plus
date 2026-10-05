@@ -23,6 +23,7 @@ namespace OriCoopBepInEx.Plugin
         private ConfigEntry<int> _playerId;
         private ConfigEntry<string> _nickname;
         private ConfigEntry<bool> _enableLegacyFloatingHud;
+        private ConfigEntry<bool> _animVerbose;
         private readonly Dictionary<int, PlayerSnapshot> _remotePlayers = new Dictionary<int, PlayerSnapshot>();
         private readonly Queue<Action> _mainThreadActions = new Queue<Action>();
         private readonly RemotePlayerManager _remotePlayerManager = new RemotePlayerManager();
@@ -102,6 +103,11 @@ namespace OriCoopBepInEx.Plugin
         public static void LogError(string msg)
         {
             if (Instance != null) Instance.Logger.LogError(msg);
+        }
+
+        public static bool IsAnimVerbose()
+        {
+            return Instance != null && Instance._animVerbose != null && Instance._animVerbose.Value;
         }
 
         public void Connect(string host, int port, string nick)
@@ -245,6 +251,7 @@ namespace OriCoopBepInEx.Plugin
             _playerId = Config.Bind("Network", "PlayerId", -1, "Local player identifier; keep -1 for server assignment.");
             _nickname = Config.Bind("Network", "Nickname", "Ori_Player", "Name shown to other players.");
             _enableLegacyFloatingHud = Config.Bind("UI", "EnableLegacyFloatingHud", false, "Habilita o HUD flutuante legado (desativado por padrao em favor da UI nativa no menu de pausa).");
+            _animVerbose = Config.Bind("Diagnostics", "AnimVerbose", false, "Loga transicoes de animacao remota ([ANIM]) no LogOutput.log.");
 
             ServerConnectionDialog.Initialize();
 

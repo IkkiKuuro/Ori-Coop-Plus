@@ -1,6 +1,7 @@
 using System;
 using OriCoop;
 using OriCoopBepInEx.Diagnostics;
+using OriCoopBepInEx.Plugin;
 using OriCoopBepInEx.UI;
 using UnityEngine;
 
@@ -109,6 +110,7 @@ namespace OriCoopBepInEx.Client
             {
                 _pendingState = _confirmedState;
                 ApplyConfirmedAnimation(animName, animHash, _confirmedState);
+                LogAnimTransition(state, "manteve");
                 return;
             }
 
@@ -116,6 +118,7 @@ namespace OriCoopBepInEx.Client
             {
                 _pendingState = state;
                 _pendingSince = Time.time;
+                LogAnimTransition(state, "histerese-aguarda");
                 return;
             }
 
@@ -123,6 +126,7 @@ namespace OriCoopBepInEx.Client
             {
                 _confirmedState = state;
                 ApplyConfirmedAnimation(animName, animHash, _confirmedState);
+                LogAnimTransition(state, "trocou");
             }
         }
 
@@ -159,12 +163,22 @@ namespace OriCoopBepInEx.Client
             // fallback para Idle genérico que virava sprite aleatório).
             if (targetClip == null)
             {
+                if (OriCoopPlugin.IsAnimVerbose())
+                {
+                    OriCoopPlugin.LogInfo(string.Format("[ANIM] P{0} recv={1} aplicado=manteve-atual motivo=desconhecido",
+                        PlayerId, confirmedState));
+                }
                 return;
             }
 
             if (_animator.CurrentAnimation != targetClip)
             {
                 _animator.SetAnimation(targetClip, true);
+                if (OriCoopPlugin.IsAnimVerbose())
+                {
+                    OriCoopPlugin.LogInfo(string.Format("[ANIM] P{0} recv={1} aplicado={2} motivo=trocou",
+                        PlayerId, confirmedState, targetClip.name));
+                }
             }
 
             if (_lastAnimName != animName)
@@ -225,6 +239,16 @@ namespace OriCoopBepInEx.Client
                 _lastAnimName = animName;
                 ReplicationObservability.TrackPacket(PlayerId, animHash, animName ?? fallbackState.ToString(), applied);
             }
+        }
+
+        private void LogAnimTransition(ActionVisualState receivedState, string reason)
+        {
+            if (!OriCoopPlugin.IsAnimVerbose())
+            {
+                return;
+            }
+            OriCoopPlugin.LogInfo(string.Format("[ANIM] P{0} recv={1} confirmado={2} motivo={3}",
+                PlayerId, receivedState, _confirmedState, reason));
         }
 
         private void Update()
