@@ -29,6 +29,9 @@ para outros jogos.
 - Consulte [contexto da sincronia de animações](anim-sync-CONTEXT.md) para as
   decisões travadas do rework de anims (inventário, pacote novo, histerese,
   diagnóstico).
+- Consulte [contexto da reescrita do servidor](server-rewrite-CONTEXT.md) para
+  as decisões travadas do novo core (transporte async, sessão com token,
+  confiabilidade por pacote, quebra versionada).
 - Consulte [catálogo de animações](anim-catalog.md) para o mapeamento
   nome → estado de movimentação do Ori.
 - Consulte [bateria de testes de anims](anim-test-battery.md) para validar o
