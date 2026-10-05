@@ -333,15 +333,12 @@ parado o puppet deve ficar em Idle do Ori (nunca sprite de inimigo);
 Bash/Dash/Glide/Stomp/ChargeJump/DoubleJump/WallSlide/WallJump devem aparecer
 (sender lê `Controller` + nome do clipe, não só velocidade);
 `F8` deve listar clipes com `src=sein` cobrindo os 12 estados.
-**Implantada (parcial):** `OriCoopDedicatedServer.dll` (104.448 bytes, core novo
-único) copiada para `<ORI_DIR>\Server\` em 2026-10-05. **DLL do cliente
-(84.992 bytes) PENDENTE:** jogo aberto (`OriDE.exe`) bloqueou a cópia —
-fechar o jogo e copiar
-`src\OriCoopPlus\OriCoopBepInEx\bin\Release\OriCoopBepInEx.dll` para
-`<ORI_DIR>\BepInEx\plugins\`. Inclui merge com o rewrite do servidor
+**Implantado tudo em 2026-10-05:** `OriCoopDedicatedServer.dll` (104.448 bytes,
+core novo único) em `<ORI_DIR>\Server\` + `OriCoopBepInEx.dll` (84.992 bytes)
+em `<ORI_DIR>\BepInEx\plugins\`. Inclui merge com o rewrite do servidor
 (envelope 0x4F43v2), puppet leve, correções de anim, `FindLocalSein` e
-`SIO_UDP_CONNRESET` (agora em `Net/Transport/UdpTransport.cs`; Core antigo
-fora do build).
+`SIO_UDP_CONNRESET` (em `Net/Transport/UdpTransport.cs`). **Reinicie o
+servidor e o jogo** antes de testar.
 Resultado da rodada: **a confirmar** — rodar com 2 clientes e anotar aqui
 data e itens pendentes.
 
