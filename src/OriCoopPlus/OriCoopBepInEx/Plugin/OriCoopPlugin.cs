@@ -66,7 +66,7 @@ namespace OriCoopBepInEx.Plugin
 
         public bool IsConnected
         {
-            get { return _network != null && AssignedPlayerId >= 0; }
+            get { return _network != null && _network.IsConnected && AssignedPlayerId >= 0; }
         }
 
         public int CurrentPing
@@ -204,6 +204,28 @@ namespace OriCoopBepInEx.Plugin
             Logger.LogInfo("Logs de rede verbosos: " + (enabled ? "LIGADO" : "DESLIGADO"));
         }
 
+        public void SetNickname(string newNick)
+        {
+            if (string.IsNullOrEmpty(newNick))
+            {
+                return;
+            }
+
+            newNick = newNick.Trim();
+            if (_nickname != null)
+            {
+                _nickname.Value = newNick;
+                Config.Save();
+            }
+
+            _localNick = newNick;
+            if (_network != null)
+            {
+                _network.SendNicknameUpdate(newNick);
+            }
+            Logger.LogInfo("Apelido alterado para: " + newNick);
+        }
+
         private void Awake()
         {
             Instance = this;
@@ -234,6 +256,7 @@ namespace OriCoopBepInEx.Plugin
             if (snapshot != null && _network != null)
             {
                 snapshot.PlayerId = _playerId.Value;
+                snapshot.Nick = !string.IsNullOrEmpty(_localNick) ? _localNick : (_nickname != null ? _nickname.Value : "Ori_Player");
                 _localPosition = snapshot.Position;
                 _network.SendPlayerSnapshot(snapshot);
             }
@@ -310,11 +333,15 @@ namespace OriCoopBepInEx.Plugin
 
         private void OnIdentityAssigned(string nick, int id)
         {
-            if (!string.IsNullOrEmpty(nick))
+            _playerId.Value = id;
+            if (_nickname != null && !string.IsNullOrEmpty(_nickname.Value))
+            {
+                _localNick = _nickname.Value;
+            }
+            else if (!string.IsNullOrEmpty(nick))
             {
                 _localNick = nick;
             }
-            _playerId.Value = id;
 
             lock (_mainThreadActions)
             {

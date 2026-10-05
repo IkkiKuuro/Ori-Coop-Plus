@@ -11,8 +11,11 @@ namespace OriCoopBepInEx.Domain
         event Action<int> PingUpdated;
         event Action<string, int> IdentityAssigned;
 
+        bool IsConnected { get; }
+
         void Start();
         void SendPlayerSnapshot(PlayerSnapshot snapshot);
         void SendTeleportRequest(int targetPlayerId);
+        void SendNicknameUpdate(string newNick);
     }
 }

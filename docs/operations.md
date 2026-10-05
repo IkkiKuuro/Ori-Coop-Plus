@@ -1,4 +1,4 @@
-# Operacao, build e diagnostico
+﻿# Operacao, build e diagnostico
 
 ## Pre-requisitos
 
@@ -316,45 +316,60 @@ Use `/coop` sem argumentos para consultar o estado atual.
    - Teleporte direcionado ao `DummyManager` (ID 999) validado tanto pelo comando de console `/tp <origem> Bot_Amigo` quanto pelo handler `TELEPORT_REQUEST` disparado pela tecla `T`.
    - Limpeza de injeções legadas do `WWClient` e `UnityEngine.dll` executada com sucesso via `.\scripts\clean_unityengine_cecil.ps1`.
 
-318: 
-319: 5. **Validacao de Correcao de Lag e Nomes do Bot Dummy / Puppets:**
-320:    - **Causa raiz diagnosticada:** `RemotePuppetFactory.CleanPuppetComponents` destruía apenas 13 componentes pontuais, deixando dezenas de controladores de gameplay (`SeinPrefabFactory`, `SeinDamageReciever`, `SkillItem`, `PlayerGrabPushPullHintSystem`, etc.). Na inicialização do clone, `SeinPrefabFactory` instanciava dezenas de prefabs aninhados com UI e `SeinDamageReciever` lançava `NullReferenceException` ininterruptamente em `OnEnable` e `FixedUpdate` (gerando mais de 27.000 exceções no log). Como o `SetActive(true)` falhava com exceção, o puppet não era retornado para o cache `_puppets[999]` do `RemotePlayerManager`, fazendo com que a cada pacote do dummy (a 10 Hz) um novo clone de Sein fosse gerado, acumulando dezenas de GameObjects e nomes na mesma posição com queda drástica de FPS.
-321:    - **Solucao aplicada:**
-322:      - `CleanPuppetComponents` agora elimina com segurança todos os GameObjects e componentes não-visuais, preservando estritamente `Transform`, `Renderer`, `MeshFilter`, `SpriteAnimatorWithTransitions`, `CharacterSpriteMirror`, `RemotePlayerPuppet` e `RemoteVisualController`.
-323:      - Criação do componente `FloatingNameTag.cs`: anexa um único TextMesh flutuante e sombra acima da cabeça do puppet (offset Y 1.35f, rotação travada em `Quaternion.identity` e escala X normalizada), com suporte a atualização de apelido e cor customizada (Cyan para o bot).
-324:      - Silenciamento do log em `RemoteVisualController.EnforceVisibility` em `LateUpdate`, eliminando mais de 37.000 operações de escrita de I/O em disco por minuto causadas pelo watchdog.
-325: 6. **Validacao da Interface de Conexao e Notificacoes:**
-326:    - **Feedback do Dialogo de Conexao (`ServerConnectionDialog`):** Ajustada a precedência do status para verificar `OriCoopPlugin.Instance.IsConnected` antes de `_statusFeedback` e limpar o texto transitório `"Conectando..."`, exibindo imediatamente `<color=#00ff88>CONECTADO</color> (ID: X | Ping: Y ms | Parceiros: Z)`.
-327:    - **Notificacoes Nativas em Jogo:** Implementado `NativeUIHelper.ShowToast` utilizando `Game.UI.Hints.Show` para exibir avisos visuais elegantes na tela do jogo sempre que o jogador local conecta ou parceiros/bots entram na partida (`[+] Jogador conectou!`).
-328:    - **Compatibilidade Retroativa de Strings no Servidor:** `Packet.ReadString()` no `OriCoopDedicatedServer.Core` agora suporta automaticamente tanto prefixos de 4 bytes Int32 quanto codificação padrão LEB128 de 1 byte de clientes antigos, eliminando o erro `Could not read player nickname from ...: Could not read value of type 'string'!`.
-329: 
-330: 
-331: ## Diagnostico rapido
-332: 
-333: | Sintoma | Verificacoes |
-334: | --- | --- |
-335: | Crash no inicio com Access Violation (0xc0000005) em `mono.dll` ao carregar UnityExplorer | **Incompatibilidade do UniverseLib com Unity 5.3.2**: O UniverseLib 1.5.1 requer Unity 5.3.4+ para deserialização de UI e causa falha de segmentação no runtime Mono do Ori DE (5.3.2f1). Desative o UnityExplorer movendo sua pasta para fora de `plugins/`. O mod Ori Coop não depende do UnityExplorer. |
-336: | Tela preta no inicio do jogo (`Object::FindAnyObjectOfType<MonoBehaviour>`, `The referenced script on this Behaviour is missing!` e erro de layout de serializacao) | **Entrypoint prematuro do BepInEx no Unity 5.3.2f1**: O entrypoint padrao em `UnityEngine.dll` roda antes de `Assembly-CSharp.dll` ser indexado, corrompendo o cache nativo de `MonoScript`. Solucao: configurar em `BepInEx\config\BepInEx.cfg`: `Assembly = Assembly-CSharp.dll`, `Type = LoadingBootstrap`, `Method = Awake`, e restaurar `UnityEngine.dll` original executando `.\scripts\clean_unityengine_cecil.ps1` caso tenha sido alterado por loaders legados. Para verificar logs de erro, use `.\scripts\check_unity_logs.ps1`. |
-337: | BepInEx nao carrega, `LogOutput.log` nao existe e F7 nao funciona | **Arquitetura (bitness) incorreta**: `oriDE.exe` e um binario 32-bit (x86). Se `winhttp.dll` for 64-bit, o Windows ignora a DLL. Instale a versao 32-bit (`BepInEx_win_x86_5.4.x.zip`). |
-338: | Erro sobre `UnityEngine` ou `Assembly-CSharp` | Confirme as DLLs do jogo e do BepInEx; o plugin deve estar em `BepInEx\plugins` |
-339: | F8 nao abre | save controlavel, DLL correta, reinicio do jogo e log de carregamento |
-340: | Jogador sem nome | cliente/servidor da mesma versao e `/coop names on` |
-341: | Teleporte indisponivel | use `/coop tp on`, mantenha dois jogadores conectados e aguarde snapshots; `T` teleporta para o remoto mais proximo e `/tp <origem> <destino>` continua disponivel |
-342: | DLL nao pode ser copiada | encerre o jogo e `OriCoopDedicatedServer.exe` |
-343: | Servidor cheio | reduza conexoes ou inicie com maximo entre 1 e 10 |
-344: | Cliente LAN nao conecta | confirme o IPv4 `LAN address`, a porta UDP, o firewall do host e se todos estao na mesma rede |
-345: | `KeyNotFoundException` com a chave `4` ao conectar | substitua o executável pelo build atual; o servidor deve criar e percorrer exatamente os slots configurados |
-346: | `Could not read player nickname from ...: Could not read value of type 'string'!` | Incompatibilidade de serialização de string de clientes legados com LEB128 corrigida no `Packet.ReadString()` dual-mode do servidor. |
-347: | Bot Dummy / Jogador com múltiplos nomes empilhados e travamento grave (lag) | Clones de Sein acumulavam controladores de gameplay não limpos gerando exceções repetitivas no `SetActive` e recriando instâncias a cada snapshot. Resolvido com limpeza profunda de componentes no `RemotePuppetFactory` e anexação única do `FloatingNameTag`. |
-348: | Diálogo de conexão F6 fica preso em "Conectando..." mesmo após conectar | `_statusFeedback` tinha precedência indevida sobre `IsConnected`. Corrigido no `ServerConnectionDialog`. |
-349: | Submenu "Ori Coop" não responde a clique/gamepad e despausa jogo | **Bug conhecido**: `OriCoopMenuScreen` abre mas os itens clonados não processam raycast/foco de entrada, e ao sair ocorre despausa indevida mantendo elementos de UI abertos. Use a tecla F6 para a tela de conexão funcional. |
-350: 
-351: ## Itens ainda a confirmar e Bugs Conhecidos
-352: 
-353: - [Bug] Falta de foco/interatividade no submenu nativo de pausa `OriCoopMenuScreen` (solução alternativa funcional implementada via diálogo F6 `ServerConnectionDialog`);
-354: - comportamento de `AutoConnect` em todas as cenas;
-355: - persistencia das opcoes do servidor entre reinicios (o codigo atual as redefine ao carregar o modulo);
-356: - matriz de compatibilidade entre versoes do Ori, Unity e assemblies;
-357: - cobertura real de sincronizacao de inimigos e entidades em partidas longas;
-358: - descoberta automatica de servidores na LAN (atualmente o IPv4 e configurado manualmente ou via busca UDP na porta 7777).
+5. **Validacao de Correcao de Lag, Isolamento de Puppets e Tela Branca no Save:**
+   - **Causa raiz diagnosticada:** 
+     1. `RemotePuppetFactory.CleanPuppetComponents` destruia apenas componentes pontuais, deixando dezenas de controladores de gameplay (`SeinPrefabFactory`, `SeinDamageReciever`, `SkillItem`, `PlayerGrabPushPullHintSystem`, etc.). Na inicializacao do clone, `SeinPrefabFactory` instanciava dezenas de prefabs aninhados com UI e `SeinDamageReciever` lancava `NullReferenceException` ininterruptamente em `OnEnable` e `FixedUpdate` (gerando dezenas de milhares de excecoes no log). O puppet falhava ao ativar e a cada pacote gerava-se um novo clone com queda drastica para 1-5 FPS.
+     2. Singleton corrompido: ao clonar `SeinCharacter`, o `Awake` do clone redefinia `Game.Characters.Sein = this`, e ao destruir `SeinCharacter` no clone, `Game.Characters.Sein` ficava nulo. Ao tentar mitigar isso com patch de `Awake` bloqueando instancias com `Clone` no nome, o jogador legitimo no carregamento de save (`Sein(Clone)`) tinha seu `Awake` cancelado, quebrando `Game.Characters.Current` e deixando o jogo em tela branca a 5 FPS em `SeinPlaceholder.Spawn`.
+   - **Solucao aplicada:**
+     - Desativacao transitoria de `sein` antes da clonagem do template em `RemotePuppetFactory.EnsureTemplate` (`sein.SetActive(false)`), garantindo que a Unity instancie o clone inativo sem jamais disparar `Awake()` ou `OnDestroy()`. Remocao dos prefixos no `SeinCharacterPatch` que causavam a quebra do save.
+     - Preservacao e restauracao explicita de referencias a `Game.Characters.Sein` e `Current`.
+     - `CleanPuppetComponents` agora aplica higienizacao estrita por whitelist, destruindo `AudioSource`, `AudioListener`, `Collider`, `Rigidbody` e todos os `MonoBehaviour` exceto os estritamente necessarios para renderizacao e animacao (`Renderer`, `MeshFilter`, `SpriteAnimatorWithTransitions`, `CharacterSpriteMirror`, `RemotePlayerPuppet`, `RemoteVisualController` e `FloatingNameTag`).
+     - Integracao de `FloatingNameTag.cs` para manter a tag de nome flutuante com rotacao travada (`LateUpdate`) e escala normalizada.
+     - Silenciamento de logs repetitivos no `RemoteVisualController.EnforceVisibility` em `LateUpdate`.
+
+6. **Validacao da Interface de Conexao, Apelidos e Notificacoes:**
+   - **Feedback do Dialogo de Conexao (`ServerConnectionDialog`):** Ajustada a precedencia do status para verificar `OriCoopPlugin.Instance.IsConnected` antes de `_statusFeedback` e limpar o texto transitorio `"Conectando..."`, exibindo `<color=#00ff88>CONECTADO</color> (ID: X | Ping: Y ms | Parceiros: Z)`.
+   - **Sincronizacao e Persistencia de Apelido:** Corrigido o `NetworkService` para nao sobrescrever o apelido local com o banner de boas-vindas do servidor (`WelcomePacket`). Adicionado metodo `SendNicknameUpdate` (re-envio do pacote `ClientDoneMessage` / `-1` para atualizar o nick no servidor dedicado), metodo `SetNickname` no `OriCoopPlugin`, inclusao de `snapshot.Nick` nas mensagens de posicao e botao `[ Salvar Nome ]` no `ServerConnectionDialog`.
+   - **Notificacoes Nativas em Jogo:** Implementado `NativeUIHelper.ShowToast` utilizando `Game.UI.Hints.Show` para exibir avisos visuais elegantes na tela do jogo sempre que o jogador local conecta ou parceiros/bots entram na partida (`[+] Jogador conectou!`).
+   - **Compatibilidade Retroativa de Strings no Servidor:** `Packet.ReadString()` no `OriCoopDedicatedServer.Core` agora suporta automaticamente tanto prefixos de 4 bytes Int32 quanto codificacao padrao LEB128 de 1 byte de clientes antigos.
+
+## Diagnostico rapido
+
+| Sintoma | Verificacoes |
+| --- | --- |
+| Crash no inicio com Access Violation (0xc0000005) em `mono.dll` ao carregar UnityExplorer | **Incompatibilidade do UniverseLib com Unity 5.3.2**: O UniverseLib 1.5.1 requer Unity 5.3.4+ para deserializacao de UI e causa falha de segmentacao no runtime Mono do Ori DE (5.3.2f1). Desative o UnityExplorer movendo sua pasta para fora de `plugins/`. O mod Ori Coop nao depende do UnityExplorer. |
+| Tela preta no inicio do jogo (`Object::FindAnyObjectOfType<MonoBehaviour>`, `The referenced script on this Behaviour is missing!` e erro de layout de serializacao) | **Entrypoint prematuro do BepInEx no Unity 5.3.2f1**: O entrypoint padrao em `UnityEngine.dll` roda antes de `Assembly-CSharp.dll` ser indexado, corrompendo o cache nativo de `MonoScript`. Solucao: configurar em `BepInEx\config\BepInEx.cfg`: `Assembly = Assembly-CSharp.dll`, `Type = LoadingBootstrap`, `Method = Awake`, e restaurar `UnityEngine.dll` original executando `.\scripts\clean_unityengine_cecil.ps1` caso tenha sido alterado por loaders legados. Para verificar logs de erro, use `.\scripts\check_unity_logs.ps1`. |
+| BepInEx nao carrega, `LogOutput.log` nao existe e F7 nao funciona | **Arquitetura (bitness) incorreta**: `oriDE.exe` e um binario 32-bit (x86). Se `winhttp.dll` for 64-bit, o Windows ignora a DLL. Instale a versao 32-bit (`BepInEx_win_x86_5.4.x.zip`). |
+| Erro sobre `UnityEngine` ou `Assembly-CSharp` | Confirme as DLLs do jogo e do BepInEx; o plugin deve estar em `BepInEx\plugins` |
+| F8 nao abre | save controlavel, DLL correta, reinicio do jogo e log de carregamento |
+| Jogador sem nome | cliente/servidor da mesma versao e `/coop names on` |
+| Teleporte indisponivel | use `/coop tp on`, mantenha dois jogadores conectados e aguarde snapshots; `T` teleporta para o remoto mais proximo e `/tp <origem> <destino>` continua disponivel |
+| DLL nao pode ser copiada | encerre o jogo e `OriCoopDedicatedServer.exe` |
+| Servidor cheio | reduza conexoes ou inicie com maximo entre 1 e 10 |
+| Cliente LAN nao conecta | confirme o IPv4 `LAN address`, a porta UDP, o firewall do host e se todos estao na mesma rede |
+| `KeyNotFoundException` com a chave `4` ao conectar | substitua o executavel pelo build atual; o servidor deve criar e percorrer exatamente os slots configurados |
+| `RECIVE UDP CALLBACK ERROR: Could not read value of type 'string'!` em `ClientDoneMessage` | Incompatibilidade de serializacao de string no handshake (`BinaryWriter.Write(string)` gerava LEB128 em vez de Int32). Corrigido com `WriteLegacyString` no cliente e leitura segura no `ServerHandle`. |
+| `No remote player is available for teleport` com bot `dummy` ativo | O `DummyManager` (ID 999) nao estava incluido na lista de clientes validos para teleporte. Suporte adicionado no handler `TELEPORT_REQUEST` do servidor e no comando `/tp`. |
+| Conexao concorrente ou logs de `[WW SYSTEM]` | Resquicio de injecao legada do `WW_Launcher` na `UnityEngine.dll` (`MonoBehaviour.Awake`) e `WWClient.dll`. Execute `.\scripts\clean_unityengine_cecil.ps1` e mova `WWClient.dll` para `disabled_plugins`. |
+| Queda drastica de FPS (1-5 FPS) e enxurrada de `NullReferenceException` ao entrar 2º jogador ou tela branca ao carregar o save (`SeinPositionAndDirectionTracker.get_Speed`, `DoorWithSlots.get_OriHasTargets`, `SeinPlaceholder.Spawn`) | **Corrompimento de singleton e scripts orfaos no boneco remoto**: Ao instanciar o template do boneco a partir de `Game.Characters.Sein`, o metodo `Awake` do clone assumia `Game.Characters.Sein = this`, e a subsequente destruicao de `SeinCharacter` no boneco zerava `Game.Characters.Sein = null`, quebrando todos os sistemas nativos do jogo. Adicionalmente, se fosse usado um prefixo bloqueando `Clone`, o `Sein(Clone)` legitimo do save falhava em inicializar `Game.Characters.Current`, travando em tela branca a 5 FPS em `SeinPlaceholder.Spawn`. **Solucao implementada**: Desativacao transitoria de `sein` antes da clonagem do template em `RemotePuppetFactory.EnsureTemplate` (garantindo que o clone nasca inativo e nunca execute `Awake` ou `OnDestroy`), protecao e restauracao explicita de `Game.Characters.Sein`/`Current`, e higienizacao estrita por whitelist em `CleanPuppetComponents` destruindo colisores, rigidbodies, audios e todos os MonoBehaviours exceto renderizadores e animadores. |
+| Interface de Conexao (F6) travada em "Conectando..." mesmo apos conectado | **Ordem de precedencia em `ServerConnectionDialog.OnGUI`**: A verificacao de `_statusFeedback` (preenchida com mensagem transitoria ao clicar em Conectar) vinha antes da verificacao de `IsConnected`. **Solucao implementada**: `IsConnected` agora tem prioridade maxima na renderizacao do status, exibe `CONECTADO (ID | Ping | Parceiros)` em verde e reseta automaticamente mensagens temporarias. |
+| Alteracao de apelido/nome nao funciona ou reverte para string de boas-vindas do servidor | **Sobrescrita por banner de boas-vindas e falta de propagacao**: Ao receber o pacote `-1`, o cliente interpretava a string de boas-vindas (`WELCOME TO THE SERVER YOUR ID: X`) como apelido e sobrescrevia `_localNick`. **Solucao implementada**: `NetworkService` agora despacha o apelido configurado pelo jogador, `OriCoopPlugin.Publish` anexa o apelido aos snapshots, e `ServerConnectionDialog` conta com botao dedicado `[ Salvar Nome ]` que dispara `SendNicknameUpdate` para o servidor dedicado e atualiza o `TextMesh` flutuante do boneco. |
+| Submenu "Ori Coop" nao responde a clique/gamepad e despausa jogo | **Bug conhecido**: `OriCoopMenuScreen` abre mas os itens clonados nao processam raycast/foco de entrada, e ao sair ocorre despausa indevida mantendo elementos de UI abertos. Use a tecla F6 para a tela de conexao funcional. |
+
+## Validacao de Correcao Realizada
+
+1. **Compilacao:** `OriCoopBepInEx.dll` compilado com sucesso (C# 5, .NET Framework 3.5) gerando sem erros ou avisos.
+2. **Implantacao:** DLL instalada em `C:\Program Files (x86)\Steam\steamapps\common\Ori DE\BepInEx\plugins\OriCoopBepInEx.dll`.
+3. **Isolamento de Puppet:** Testado e validado contra corrupcao do singleton global `Game.Characters.Sein` e remocao total de scripts de gameplay do boneco remoto.
+4. **NameTag:** Componente `FloatingNameTag` adicionado aos bonecos remotos com travamento de rotacao frontal em `LateUpdate()`.
+5. **UI de Conexao:** Precedencia de status corrigida e botao de salvamento de nome funcional.
+
+## Itens ainda a confirmar e Bugs Conhecidos
+
+- [Bug] Falta de foco/interatividade no submenu nativo de pausa `OriCoopMenuScreen` (solucao alternativa funcional implementada via dialogo F6 `ServerConnectionDialog`);
+- comportamento de `AutoConnect` em todas as cenas;
+- persistencia das opcoes do servidor entre reinicios (o codigo atual as redefine ao carregar o modulo);
+- matriz de compatibilidade entre versoes do Ori, Unity e assemblies;
+- cobertura real de sincronizacao de inimigos e entidades em partidas longas;
+- descoberta automatica de servidores na LAN (atualmente o IPv4 e configurado manualmente).
 

@@ -21,3 +21,17 @@ Antes de concluir uma tarefa:
 
 Uma tarefa nao deve ser considerada completa se o codigo mudou e a
 documentacao relacionada ficou desatualizada.
+
+## Implantacao e substituicao obrigatoria apos build
+
+Sempre que qualquer modulo ou DLL do mod for compilado com sucesso (por exemplo,
+`OriCoopBepInEx.dll` ou executaveis/DLLs do servidor):
+
+1. **E OBRIGATORIO substituir imediatamente o arquivo compilado na pasta de instalacao do jogo Ori DE**
+   (tipicamente `<ORI_DIR>\BepInEx\plugins\OriCoopBepInEx.dll`, e para o servidor em `<ORI_DIR>\Server\`);
+2. Os caminhos padrao conhecidos de instalacao sao:
+   - `C:\Program Files (x86)\Steam\steamapps\common\Ori DE`
+   - `D:\SteamLibrary\steamapps\common\Ori DE`
+3. Certifique-se de que o jogo (`OriDE.exe`) ou processos bloqueando o arquivo estejam fechados antes da copia se houver erro de escrita;
+4. Nao finalize uma tarefa de alteracao de codigo/compilacao sem garantir que a nova versao compilada ja foi implantada na pasta do jogo.
+

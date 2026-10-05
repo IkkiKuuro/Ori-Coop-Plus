@@ -9,7 +9,7 @@ namespace OriCoopBepInEx.Patches
     {
         private static void Postfix(SeinCharacter __instance)
         {
-            if (OriCoopPlugin.Instance != null)
+            if (OriCoopPlugin.Instance != null && __instance == Game.Characters.Sein)
             {
                 OriCoopPlugin.Instance.Publish(PlayerStateReader.Read(__instance));
             }

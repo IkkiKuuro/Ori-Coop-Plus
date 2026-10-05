@@ -1,6 +1,7 @@
 using System;
 using OriCoop;
 using OriCoopBepInEx.Diagnostics;
+using OriCoopBepInEx.UI;
 using UnityEngine;
 
 namespace OriCoopBepInEx.Client
@@ -10,13 +11,12 @@ namespace OriCoopBepInEx.Client
         private RemoteVisualController _visualController;
         private SpriteAnimatorWithTransitions _animator;
         private CharacterSpriteMirror _spriteMirror;
+        private FloatingNameTag _nameTag;
 
         private Vector3 _targetPosition;
         private Vector3 _velocity;
         private string _lastAnimName;
         private const float InterpolationSmoothing = 18f;
-
-        private UI.FloatingNameTag _nameTag;
 
         public int PlayerId { get; private set; }
         public string Nickname { get; private set; }
@@ -36,7 +36,7 @@ namespace OriCoopBepInEx.Client
 
             if (_nameTag == null)
             {
-                _nameTag = UI.FloatingNameTag.Attach(gameObject, Nickname);
+                _nameTag = FloatingNameTag.Attach(gameObject, Nickname);
                 if (id == 999 && _nameTag != null)
                 {
                     _nameTag.SetColor(new Color(0.2f, 0.85f, 1f)); // Distinct cyan color for test dummy bot
@@ -44,22 +44,28 @@ namespace OriCoopBepInEx.Client
             }
         }
 
-        public void UpdateNickname(string nickname)
+        public void UpdateNickname(string newNick)
         {
-            if (string.IsNullOrEmpty(nickname) || nickname == Nickname)
+            if (string.IsNullOrEmpty(newNick) || newNick == Nickname)
             {
                 return;
             }
 
-            Nickname = nickname;
+            Nickname = newNick;
+            gameObject.name = string.Format("RemotePlayer_{0}_{1}", PlayerId, Nickname);
             if (_nameTag != null)
             {
-                _nameTag.SetNickname(nickname);
+                _nameTag.SetNickname(newNick);
             }
         }
 
-        public void ApplySnapshot(Vector3 position, Vector3 velocity, bool facingLeft, string animName, uint animHash)
+        public void ApplySnapshot(Vector3 position, Vector3 velocity, bool facingLeft, string animName, uint animHash, string nick)
         {
+            if (!string.IsNullOrEmpty(nick) && nick != Nickname)
+            {
+                UpdateNickname(nick);
+            }
+
             _targetPosition = position;
             _velocity = velocity;
 

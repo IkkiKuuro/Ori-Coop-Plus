@@ -130,6 +130,7 @@ namespace OriCoopBepInEx.UI
             {
                 statusLine = "<color=#ffea00>PROCURANDO SERVIDOR NA REDE LOCAL (LAN)...</color>";
             }
+
             else if (!string.IsNullOrEmpty(_statusFeedback))
             {
                 statusLine = _statusFeedback;
@@ -153,10 +154,19 @@ namespace OriCoopBepInEx.UI
             _inputPort = GUI.TextField(new Rect(winX + padX, curY, contentWidth, 26f), _inputPort ?? string.Empty, _textFieldStyle);
             curY += 34f;
 
-            // Campo Nickname
+            // Campo Nickname com botao Salvar Nome
             GUI.Label(new Rect(winX + padX, curY, contentWidth, 18f), "Seu Apelido / Nickname:", _labelStyle);
             curY += 20f;
-            _inputNick = GUI.TextField(new Rect(winX + padX, curY, contentWidth, 26f), _inputNick ?? string.Empty, _textFieldStyle);
+            float nickFieldW = contentWidth - 110f;
+            _inputNick = GUI.TextField(new Rect(winX + padX, curY, nickFieldW, 26f), _inputNick ?? string.Empty, _textFieldStyle);
+            if (GUI.Button(new Rect(winX + padX + nickFieldW + 8f, curY, 102f, 26f), "Salvar Nome", _buttonSecondaryStyle))
+            {
+                if (OriCoopPlugin.Instance != null && !string.IsNullOrEmpty(_inputNick))
+                {
+                    OriCoopPlugin.Instance.SetNickname(_inputNick.Trim());
+                    _statusFeedback = "<color=#00ff88>Apelido salvo com sucesso!</color>";
+                }
+            }
             curY += 38f;
 
             // Linha de Botoes
@@ -204,8 +214,8 @@ namespace OriCoopBepInEx.UI
 
             if (OriCoopPlugin.Instance != null)
             {
-                OriCoopPlugin.Instance.Connect(host, port, nick);
                 _statusFeedback = string.Format("<color=#00e5ff>Conectando a {0}:{1} como '{2}'...</color>", host, port, nick);
+                OriCoopPlugin.Instance.Connect(host, port, nick);
             }
         }
 

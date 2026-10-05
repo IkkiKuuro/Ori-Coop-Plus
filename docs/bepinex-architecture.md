@@ -40,10 +40,19 @@ Plugin/OriCoopPlugin
 - **Client (Entidades Remotas e Visibilidade):**
   - `RemotePlayerManager`: Cria, atualiza e descarta instâncias de `RemotePlayerPuppet`
     conforme snapshots são recebidos ou jogadores desconectam.
-  - `RemotePuppetFactory`: Clona a hierarquia visual de `Game.Characters.Sein`,
-    removendo estritamente scripts de input (`SeinController`, `SeinInput`), física
-    concorrente (`Rigidbody`), controladores de morte/inventário e otimizadores de
-    frustum nativos. O GameObject resultante é alocado sob `DontDestroyOnLoad`.
+  - `RemotePuppetFactory`: Clona a hierarquia visual de `Game.Characters.Sein`
+    utilizando isolamento de singletons (`Game.Characters.Sein` e `Game.Characters.Current`),
+    impedindo que o `Awake` ou `OnDestroy` do clone zere a referência global do jogador local.
+    Aplica limpeza por *whitelist*: remove todos os `Collider` (evitando gatilhos e cutscenes
+    falsas), `Rigidbody` e todos os `MonoBehaviour` que não sejam estritamente visuais
+    (`SpriteAnimatorWithTransitions`, `CharacterSpriteMirror`, `RemotePlayerPuppet`,
+    `RemoteVisualController`). Isso previne a execução concorrente de mais de 50 scripts
+    de gameplay nativos do Ori (`SeinLevel`, `SeinDoorHandler`, etc.) no boneco remoto,
+    eliminando quedas brutais de FPS causadas por enxurradas de `NullReferenceException`.
+  - `RemotePlayerPuppet`: Gerencia interpolação de posições e espelhamento, contendo
+    um componente `TextMesh` ("NameTag") flutuante com cor ciano sobre o boneco. Em
+    `LateUpdate()`, a rotação da NameTag é travada em `Quaternion.identity` para que o texto
+    não seja invertido quando o boneco virar para a esquerda.
   - `RemoteVisualController`: Atua em `LateUpdate()` como watchdog, garantindo que
     `MeshRenderer.enabled` e `gameObject.activeSelf` permaneçam ativos e que o canal
     alpha dos materiais não seja zerado por cutscenes ou gatilhos de cenário.
@@ -56,12 +65,16 @@ Plugin/OriCoopPlugin
     (debounce) de transições de visibilidade e taxas de pacotes de animação recebidos
     versus aplicados.
 - **Patches:**
+  - `SeinCharacterPatch`: Captura `transform.position`, `Speed`, `FaceLeft` e
+    `CurrentAnimation.name` via tipagem direta de `SeinCharacter`, filtrando estritamente
+    para o jogador local (`__instance == Game.Characters.Sein`). A proteção dos singletons
+    `Game.Characters.Sein` e `Current` é realizada na origem pela desativação transitória de
+    `sein` durante a instanciação em `RemotePuppetFactory`, garantindo que clones inativos
+    nunca disparem `Awake()` nem interfiram no `Awake()` legítimo do `Sein(Clone)` local ao abrir o save.
   - `FrustumCullingBypassPatch`: Intercepta `CameraFrustumOptimizer.ProcessFrustumOptimizable`
     e ignora o culling caso o componente pertença a uma entidade remota.
   - `AnimationPrewarmPatch`: Dispara `AnimationRegistry.Prewarm()` assim que o
     `CharacterAnimationSystem.Start` do jogo é executado.
-  - `SeinCharacterPatch`: Captura `transform.position`, `Speed`, `FaceLeft` e
-    `CurrentAnimation.name` via tipagem direta confirmada em `SeinCharacter`.
 
 ## Build e Compatibilidade
 

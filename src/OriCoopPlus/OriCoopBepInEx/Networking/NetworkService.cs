@@ -26,8 +26,13 @@ namespace OriCoopBepInEx.Networking
         private Thread _receiveThread;
         private bool _running;
         private int _assignedId = -1;
-        private readonly string _nickname;
+        private string _nickname;
         private long _lastPingSentTicks;
+
+        public bool IsConnected
+        {
+            get { return _assignedId >= 0; }
+        }
 
         public event Action<PlayerSnapshot> PlayerSnapshotReceived;
         public event Action<Vector3Data, string> TeleportRequested;
@@ -135,6 +140,20 @@ namespace OriCoopBepInEx.Networking
             }
         }
 
+        public void SendNicknameUpdate(string newNick)
+        {
+            if (string.IsNullOrEmpty(newNick))
+            {
+                return;
+            }
+
+            _nickname = newNick.Trim();
+            if (_assignedId >= 0)
+            {
+                SendReady();
+            }
+        }
+
         private void ReceiveLoop()
         {
             IPEndPoint endpoint = new IPEndPoint(IPAddress.Any, 0);
@@ -236,13 +255,13 @@ namespace OriCoopBepInEx.Networking
                 }
                 if (packetId == WelcomePacket)
                 {
-                    string nick = ReadLegacyString(reader);
+                    string welcomeGreeting = ReadLegacyString(reader);
                     _assignedId = reader.ReadInt32();
                     SendReady();
                     Action<string, int> handler = IdentityAssigned;
                     if (handler != null)
                     {
-                        handler(nick, _assignedId);
+                        handler(_nickname, _assignedId);
                     }
 
                     return;
