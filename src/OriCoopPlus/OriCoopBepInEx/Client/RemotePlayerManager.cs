@@ -33,6 +33,14 @@ namespace OriCoopBepInEx.Client
                 return;
             }
 
+            // Pacote 18 (PLAYER_STATE) é completo: aplica direto, sem fusão
+            // heurística nem velocidade inferida (legado removido no plano 03).
+            if (snapshot.IsPlayerStatePacket)
+            {
+                HandleDirectState(snapshot);
+                return;
+            }
+
             // BUG #2: o protocolo envia POSITION e ANIM em pacotes separados.
             // O codigo antigo criava/aplicava um snapshot cru a cada pacote:
             // um pacote ANIM (sem posicao) zerava _targetPosition para (0,0,0),
@@ -130,8 +138,40 @@ namespace OriCoopBepInEx.Client
             }
         }
 
-        public void RemovePlayer(int playerId)
+        public void HandleDirectState(PlayerSnapshot snapshot)
         {
+            if (snapshot == null || snapshot.PlayerId < 0)
+            {
+                return;
+            }
+
+            Vector3 pos = new Vector3(snapshot.Position.X, snapshot.Position.Y, snapshot.Position.Z);
+            Vector3 vel = new Vector3(snapshot.Velocity.X, snapshot.Velocity.Y, 0f);
+
+            RemotePlayerPuppet puppet;
+            if (!_puppets.TryGetValue(snapshot.PlayerId, out puppet) || puppet == null)
+            {
+                puppet = RemotePuppetFactory.CreatePuppet(snapshot.PlayerId, snapshot.Nick, pos);
+                if (puppet != null)
+                {
+                    _puppets[snapshot.PlayerId] = puppet;
+                    puppet.SnapTo(pos);
+                }
+            }
+
+            if (puppet != null)
+            {
+                if (!string.IsNullOrEmpty(snapshot.Nick))
+                {
+                    puppet.UpdateNickname(snapshot.Nick);
+                }
+                puppet.ApplySnapshotDirect(pos, vel, snapshot.Animation.FacingLeft,
+                    snapshot.Animation.State, snapshot.Animation.Name,
+                    snapshot.Animation.AnimNameHash, snapshot.Nick);
+            }
+        }
+
+        public void RemovePlayer(int playerId)        {
             RemotePlayerPuppet puppet;
             if (_puppets.TryGetValue(playerId, out puppet))
             {

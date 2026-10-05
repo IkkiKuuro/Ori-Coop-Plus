@@ -54,5 +54,6 @@ namespace OriCoopBepInEx.Domain
         public PlayerInputState Input;
         public AnimationState Animation;
         public long Timestamp;
+        public bool IsPlayerStatePacket;
     }
 }

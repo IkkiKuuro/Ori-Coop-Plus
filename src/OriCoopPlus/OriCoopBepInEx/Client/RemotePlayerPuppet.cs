@@ -17,6 +17,11 @@ namespace OriCoopBepInEx.Client
         private Vector3 _velocity;
         private string _lastAnimName;
         private const float InterpolationSmoothing = 18f;
+        private const float ConfirmDelaySec = 0.15f;
+
+        private ActionVisualState _confirmedState = ActionVisualState.Idle;
+        private ActionVisualState _pendingState = ActionVisualState.Idle;
+        private float _pendingSince;
 
         public int PlayerId { get; private set; }
         public string Nickname { get; private set; }
@@ -79,6 +84,94 @@ namespace OriCoopBepInEx.Client
             }
 
             ApplyAnimation(animName, animHash);
+        }
+
+        public void ApplySnapshotDirect(Vector3 position, Vector3 velocity, bool facingLeft, ActionVisualState state, string animName, uint animHash, string nick)
+        {
+            if (!string.IsNullOrEmpty(nick) && nick != Nickname)
+            {
+                UpdateNickname(nick);
+            }
+
+            _targetPosition = position;
+            _velocity = velocity;
+
+            if (_spriteMirror != null)
+            {
+                _spriteMirror.FaceLeft = facingLeft;
+            }
+            else
+            {
+                transform.rotation = Quaternion.Euler(0f, facingLeft ? 180f : 0f, 0f);
+            }
+
+            if (state == _confirmedState)
+            {
+                _pendingState = _confirmedState;
+                ApplyConfirmedAnimation(animName, animHash, _confirmedState);
+                return;
+            }
+
+            if (state != _pendingState)
+            {
+                _pendingState = state;
+                _pendingSince = Time.time;
+                return;
+            }
+
+            if (Time.time - _pendingSince >= ConfirmDelaySec)
+            {
+                _confirmedState = state;
+                ApplyConfirmedAnimation(animName, animHash, _confirmedState);
+            }
+        }
+
+        private void ApplyConfirmedAnimation(string animName, uint animHash, ActionVisualState confirmedState)
+        {
+            if (_animator == null)
+            {
+                return;
+            }
+
+            if (!AnimationRegistry.IsPrewarmed)
+            {
+                try { AnimationRegistry.Prewarm(); } catch { }
+            }
+
+            TextureAnimationWithTransitions targetClip = AnimationRegistry.Resolve(animName, animHash, confirmedState);
+
+            if (targetClip == null)
+            {
+                try
+                {
+                    TextureAnimationWithTransitions[] local =
+                        GetComponentsInChildren<TextureAnimationWithTransitions>(true);
+                    if (local != null && local.Length > 0)
+                    {
+                        AnimationRegistry.RegisterClips(local);
+                        targetClip = AnimationRegistry.Resolve(animName, animHash, confirmedState);
+                    }
+                }
+                catch { }
+            }
+
+            // Clipe desconhecido: mantém a anim atual (fail-closed, sem
+            // fallback para Idle genérico que virava sprite aleatório).
+            if (targetClip == null)
+            {
+                return;
+            }
+
+            if (_animator.CurrentAnimation != targetClip)
+            {
+                _animator.SetAnimation(targetClip, true);
+            }
+
+            if (_lastAnimName != animName)
+            {
+                _lastAnimName = animName;
+                ReplicationObservability.TrackPacket(PlayerId, animHash, animName ?? confirmedState.ToString(), true);
+            }
         }
 
         private void ApplyAnimation(string animName, uint animHash)

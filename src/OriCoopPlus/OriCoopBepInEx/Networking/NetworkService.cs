@@ -325,6 +325,7 @@ namespace OriCoopBepInEx.Networking
                     snapshot.Animation.AnimNameHash = unchecked((uint)reader.ReadInt32());
                     snapshot.Velocity = new Vector2Data(reader.ReadSingle(), reader.ReadSingle());
                     snapshot.Nick = ReadLegacyString(reader);
+                    snapshot.IsPlayerStatePacket = true;
                     RaiseSnapshot(snapshot);
                 }
                 else if (packetId == (int)PacketType.TELEPORT_REQUEST)
