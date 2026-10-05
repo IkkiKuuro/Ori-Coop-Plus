@@ -1,11 +1,13 @@
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using OriCoop;
+using OriCoopDedicatedServer.Core.CommandSystem;
 using OriCoopDedicatedServer.Net.Diagnostics;
 using OriCoopDedicatedServer.Net.Game;
 using OriCoopDedicatedServer.Net.Reliability;
@@ -141,7 +143,7 @@ namespace OriCoopDedicatedServer.Net
                     TouchSession(datagram.Remote, header);
                     break;
                 default:
-                    await HandleGamePacketAsync(datagram, header, ct).ConfigureAwait(false);
+                    await HandleGamePacketAsync(datagram, header, payload, ct).ConfigureAwait(false);
                     break;
             }
         }
@@ -201,7 +203,7 @@ namespace OriCoopDedicatedServer.Net
             await SendSystemAsync(remote, NetProtocol.ServerId, NetProtocol.MsgPong, payload, ct).ConfigureAwait(false);
         }
 
-        private Task HandleGamePacketAsync(ReceivedDatagram datagram, NetEnvelope header, CancellationToken ct)
+        private Task HandleGamePacketAsync(ReceivedDatagram datagram, NetEnvelope header, byte[] payload, CancellationToken ct)
         {
             if (header.ClientId == NetProtocol.PreHandshakeId)
             {
@@ -220,6 +222,11 @@ namespace OriCoopDedicatedServer.Net
             if (header.PacketId == (int)PacketType.DISCONNECT)
             {
                 return HandleDisconnectAsync(sender, ct);
+            }
+
+            if (header.PacketId == ChatPacketId)
+            {
+                return HandleChatAsync(sender, payload, ct);
             }
 
             if (header.PacketId == (int)PacketType.PLAYER_STATE)
@@ -268,6 +275,173 @@ namespace OriCoopDedicatedServer.Net
                     _log.Log(ServerLogLevel.Warning, "NET2", "Relay para " + target.Id + " falhou: " + ex.GetType().Name);
                 }
             }
+        }
+
+        /// <summary>
+        /// Chat -5 (D-10/D-11, regras preservadas do chat atual): trunca em
+        /// 350 chars, remove &lt;/&gt; do texto e do nick, responde help
+        /// (h/help//h//help) em unicast confiavel ao solicitante e transmite
+        /// o restante com sender formatado, confiavel, aos IsReady.
+        /// Corpo de entrada: marcador int -5 + string legada (tolerante a
+        /// string nua sem marcador). Corpo de saida: marcador -5 + sender +
+        /// texto, como o cliente new-core le.
+        /// </summary>
+        private async Task HandleChatAsync(Session.Session sender, byte[] payload, CancellationToken ct)
+        {
+            if (!sender.IsReady)
+            {
+                _log.Log(ServerLogLevel.Debug, "SESSAO", "Chat de " + sender.Id + " antes do Confirm (drop)");
+                return;
+            }
+            string text;
+            if (!TryParseChatText(payload, out text))
+            {
+                _log.Log(ServerLogLevel.Warning, "CHAT", "Texto ilegivel de " + sender.Id + " (drop)");
+                return;
+            }
+            if (text.Length > NetProtocol.ChatMaxChars)
+            {
+                text = text.Substring(0, NetProtocol.ChatMaxChars);
+            }
+            text = StripBrackets(text);
+            string safeNick = StripBrackets(sender.Nickname);
+
+            if (IsHelpCommand(text))
+            {
+                byte[] helpPayload = BuildChatPayload("<color=yellow>SERVER</color>", BuildHelpText());
+                await SendReliableAsync(sender.EndPoint, ChatPacketId, helpPayload, sender.Id, ct).ConfigureAwait(false);
+                return;
+            }
+
+            byte[] broadcast = BuildChatPayload("<color=green>" + safeNick + "</color>", text);
+            _log.Log(ServerLogLevel.Info, "CHAT", "[" + safeNick + " " + sender.Id + "] " + text);
+            foreach (Session.Session target in _relay.Targets(sender, _sessions.All))
+            {
+                try
+                {
+                    uint seq = NextServerSeq();
+                    byte[] datagram;
+                    string error;
+                    if (!EnvelopeCodec.TryEncode(NetProtocol.FlagReliable, seq, NetProtocol.ServerId, 0, ChatPacketId, 0, broadcast, out datagram, out error))
+                    {
+                        _log.Log(ServerLogLevel.Error, "NET2", "Encode falhou: " + error);
+                        return;
+                    }
+                    await _transport.SendAsync(datagram, target.EndPoint, ct).ConfigureAwait(false);
+                    _acks.Track(target.EndPoint, seq, datagram, target.Id);
+                }
+                catch (Exception ex)
+                {
+                    _log.Log(ServerLogLevel.Warning, "NET2", "Chat para " + target.Id + " falhou: " + ex.GetType().Name);
+                }
+            }
+        }
+
+        private static bool TryParseChatText(byte[] payload, out string text)
+        {
+            text = string.Empty;
+            if (payload == null)
+            {
+                return false;
+            }
+            int offset = 0;
+            if (payload.Length >= 4 && BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, 4)) == ChatPacketId)
+            {
+                offset = 4;
+            }
+            string value;
+            int next;
+            if (!TryReadLegacyString(payload, offset, out value, out next))
+            {
+                return false;
+            }
+            text = value ?? string.Empty;
+            return true;
+        }
+
+        private static bool TryReadLegacyString(byte[] buffer, int offset, out string value, out int nextOffset)
+        {
+            value = string.Empty;
+            nextOffset = offset;
+            if (buffer == null || offset < 0 || buffer.Length - offset < 4)
+            {
+                return false;
+            }
+            int length = BinaryPrimitives.ReadInt32LittleEndian(buffer.AsSpan(offset, 4));
+            if (length < 0 || length > buffer.Length - offset - 4)
+            {
+                return false;
+            }
+            try
+            {
+                value = Encoding.ASCII.GetString(buffer, offset + 4, length);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+            nextOffset = offset + 4 + length;
+            return true;
+        }
+
+        private static byte[] BuildChatPayload(string sender, string text)
+        {
+            byte[] senderBytes = Encoding.ASCII.GetBytes(sender ?? string.Empty);
+            byte[] textBytes = Encoding.ASCII.GetBytes(text ?? string.Empty);
+            byte[] payload = new byte[4 + 4 + senderBytes.Length + 4 + textBytes.Length];
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, 4), ChatPacketId);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(4, 4), senderBytes.Length);
+            Buffer.BlockCopy(senderBytes, 0, payload, 8, senderBytes.Length);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(8 + senderBytes.Length, 4), textBytes.Length);
+            Buffer.BlockCopy(textBytes, 0, payload, 12 + senderBytes.Length, textBytes.Length);
+            return payload;
+        }
+
+        private static string StripBrackets(string value)
+        {
+            return (value ?? string.Empty).Replace("<", string.Empty).Replace(">", string.Empty);
+        }
+
+        private static bool IsHelpCommand(string text)
+        {
+            string normalized = (text ?? string.Empty).Trim().ToLowerInvariant();
+            return normalized == "h" || normalized == "help" || normalized == "/h" || normalized == "/help";
+        }
+
+        private string BuildHelpText()
+        {
+            var names = new List<string>();
+            try
+            {
+                foreach (ConsoleCommand cmd in CommandProcessor.AllCommands)
+                {
+                    if (cmd != null && !string.IsNullOrEmpty(cmd.Command))
+                    {
+                        names.Add("/" + cmd.Command);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+            if (names.Count == 0)
+            {
+                names.Add("/coop");
+                names.Add("/tp");
+                names.Add("/dummy");
+                names.Add("/clientcolors");
+                names.Add("/entitysync");
+            }
+            var sb = new StringBuilder("Commands: ");
+            for (int i = 0; i < names.Count; i++)
+            {
+                if (i > 0)
+                {
+                    sb.Append(' ');
+                }
+                sb.Append(names[i]);
+            }
+            return sb.ToString();
         }
 
         /// <summary>

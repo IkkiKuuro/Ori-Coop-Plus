@@ -99,6 +99,35 @@ So apos o `Confirm` o servidor marca `IsReady=true` e aceita snapshots.
 Nick vazio vira `Player_<id>`. IDs incrementais nunca reutilizados no run;
 `0` (servidor) e `999` (dummy) nunca sao alocados. Servidor cheio
 (`count >= MaxPlayers`) recusa o `Hello` com `Reject`.
+Reconectar exige novo `Hello` com novo ID; o ID antigo nunca e reaproveitado.
+
+### Confiabilidade e sessao (hardening 02-02)
+
+Pacotes criticos — chat `-5`, `CONFIG_SYNC` 16, `TELEPORT_REQUEST` 15,
+`SYNC_ABILITY` 10, `SYNC_LEVER` 11, `SYNC_DOOR` 12, `SYNC_WORLDEVENT` 14,
+`SKILL` 7, `COLOR` 6, `DISCONNECT` 4 — sao confiaveis: o remetente marca a
+flag `Reliable` (`0x01`), o servidor responde `SysAck` 103 imediato (payload
+= `uint32` LE com a `seq` confirmada) antes do dispatch, e o reenvio do
+datagrama original acontece a cada 250 ms ate 3 tentativas (`AckRetryMs` /
+`MaxRetries` em `NetProtocol.cs`). Sem ACK apos as 3 tentativas o servidor
+loga `Warning` com sessao e `seq` e desiste sem derrubar a sessao. ACK
+piggybacked (`AckPresent` `0x02` + `ackSeq` no header) vale como `SysAck`.
+`PLAYER_STATE` 18 e `Ping` 104 nunca geram pendencia (unreliable, sem retry).
+
+Todo datagrama pos-handshake valida o par endpoint fixo + `token` contra a
+sessao do `clientId`: divergencia de token ou de endpoint (IP/porta) e
+descartada com `Warning` (com `clientId` e motivo), sem atualizar `LastSeen`
+e sem resposta; trocar de IP/porta (NAT) exige novo `Hello` com `clientId -1`.
+O sweeper (1 s) remove sessoes com mais de 10000 ms sem datagrama valido
+(`SessionTimeoutMs`) e transmite `DISCONNECT` 4 confiavel (`marcador int 4` +
+`disconnectedId int`) aos restantes; servidor cheio responde `Reject` 106
+com motivo `SERVER_FULL`, sem criar sessao.
+
+Chat `-5`: corpo de entrada = `marcador int -5` + `string` legada; o servidor
+trunca o texto em 350 chars (`ChatMaxChars`), remove `<`/`>` do texto e do
+nick, responde `h`/`help`/`/h`/`/help` com a lista de comandos em unicast
+confiavel ao solicitante (remetente `SERVER`), e transmite o restante como
+`marcador -5` + `sender` formatado + texto, confiavel, aos `IsReady`.
 
 Regra de corpo legado preservado: pacotes de jogo (`PLAYER_STATE` 18 e
 demais) mantem o corpo byte-identico ao formato anterior, incluindo o

@@ -355,8 +355,39 @@ fresco (`--net2 --auto --port 7779 --max-players 10`):
    byte a byte; sem eco para o remetente; reenvio da mesma `seq` descartado (drop-old).
 5. `ping`: `Ping 104` → `Pong 105` com mesmos `sendTicks`; eco em 2 ms (< 1000 ms).
 
-Modos isolados contra um servidor ja em pe: `--test handshake|relay|ping`
-(so `all` exige servidor fresco para as assercoes de IDs 1 e 2).
+Modos isolados contra um servidor ja em pe: `--test handshake|relay|ping|reliable|timeout|token`
+(aceita lista com virgula, ex. `--test timeout,token`; so `all` exige
+servidor fresco para as assercoes de IDs 1 e 2; `full` sobe o proprio
+servidor com `--max-players 2` na porta dada — nao use com servidor ja em pe
+nela). Cada modo isolado imprime seu token (`RELIABLE_OK`, `TIMEOUT_OK`,
+`TOKEN_OK`, ...) seguido de `SMOKE_OK`. Cada teste libera seus slots com
+`DISCONNECT` ao final para nao acumular sessoes ate o teto no modo `all`.
+
+### Hardening 02-02 — ACK+retry, sessao, sweeper e chat (2026-10-05, automatizado)
+
+Mesmo comando (`--test all`, servidor fresco `--net2 --auto --port 7779
+--max-players 10`; `server-full` usa servidor proprio `--max-players 2` na
+porta 7790). Resultado: `SMOKE_OK`, exit 0, apos os 5 passos do tracer:
+
+6. `reliable`: chat `-5` com flag `Reliable` recebe `SysAck 103` imediato;
+   sem ACK do destino, o retry entrega copia extra em ~250 ms (B recebe 2+
+   copias e confirma); `PLAYER_STATE` unreliable nao gera `SysAck`.
+7. `chat-rules`: texto de 400 chars chega com 350; `a<b>c>d` chega `abcd`;
+   nick `Evil<Nick>` chega `EvilNick` no sender; `help` responde `Commands: ...`
+   so ao solicitante (D nada recebe em 800 ms).
+8. `token`: `Ping` com token errado e `Ping` de endpoint trocado (mesmo
+   ID+token, outra porta) nao recebem `Pong` nem afetam a sessao; `Ping`
+   valido seguinte recebe `Pong` (sessao viva, `LastSeen` intacto).
+9. `timeout`: B silencia, A faz keep-alive com `Ping`; A recebe
+   `DISCONNECT 4` com o ID de B em ~10 s (limite do teste: 16 s).
+10. `server-full`: com 2 sessoes ativas em servidor `--max-players 2`, o
+    terceiro `Hello` recebe `Reject 106` com motivo `SERVER_FULL`, sem criar
+    sessao.
+
+Observacao Windows/UDP: envios do servidor para sockets ja fechados geram
+rajadas de `ConnectionReset` no log (`ReceiveAsync falhou (segue ouvindo)`);
+o loop de receive absorve e segue — e cosmetico, sem perda de datagramas
+ativos.
 
 Uso manual do novo core (path antigo continua sendo o default sem `--net2`):
 

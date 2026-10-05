@@ -18,10 +18,14 @@ internal static class Program
     private const int MsgHello = 100;
     private const int MsgWelcome = 101;
     private const int MsgConfirm = 102;
+    private const int MsgAck = 103;
     private const int MsgPing = 104;
     private const int MsgPong = 105;
     private const int MsgReject = 106;
     private const int PlayerStateId = 18;
+    private const int ChatPacket = -5;
+    private const int DisconnectPacket = 4;
+    private const byte FlagReliable = 0x01;
 
     private static int Main(string[] args)
     {
@@ -60,23 +64,9 @@ internal static class Program
     private static int RunAll(int port)
     {
         string serverProject = FindServerProject();
-        var startInfo = new ProcessStartInfo("dotnet", "run --project \"" + serverProject + "\" --configuration Release -- --net2 --auto --port " + port + " --max-players 10")
-        {
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            RedirectStandardInput = true,
-            CreateNoWindow = true,
-            WorkingDirectory = Path.GetDirectoryName(serverProject),
-        };
         var serverLog = new StringBuilder();
-        using (var server = new Process { StartInfo = startInfo })
+        using (var server = SpawnServer(serverProject, port, 10, serverLog))
         {
-            server.OutputDataReceived += (sender, e) => { if (e.Data != null) { lock (serverLog) { serverLog.AppendLine(e.Data); } } };
-            server.ErrorDataReceived += (sender, e) => { if (e.Data != null) { lock (serverLog) { serverLog.AppendLine("STDERR: " + e.Data); } } };
-            server.Start();
-            server.BeginOutputReadLine();
-            server.BeginErrorReadLine();
             try
             {
                 WaitForServer(port, TimeSpan.FromSeconds(120));
@@ -84,6 +74,10 @@ internal static class Program
                 FailUnless(TestHandshake(port, 1), "handshake falhou");
                 FailUnless(TestRelay(port), "relay falhou");
                 FailUnless(TestPing(port), "ping falhou");
+                FailUnless(TestReliable(port), "reliable falhou");
+                FailUnless(TestToken(port), "token falhou");
+                FailUnless(TestTimeout(port), "timeout falhou");
+                FailUnless(TestServerFull(serverProject, port + 11), "server-full falhou");
                 Console.WriteLine("SMOKE_OK");
                 return 0;
             }
@@ -96,43 +90,108 @@ internal static class Program
             }
             finally
             {
-                try
-                {
-                    if (!server.HasExited)
-                    {
-                        server.Kill();
-                    }
-                    server.WaitForExit(5000);
-                }
-                catch (Exception)
-                {
-                }
+                KillServer(server);
             }
+        }
+    }
+
+    private static Process SpawnServer(string serverProject, int port, int maxPlayers, StringBuilder log)
+    {
+        var startInfo = new ProcessStartInfo("dotnet", "run --project \"" + serverProject + "\" --configuration Release -- --net2 --auto --port " + port + " --max-players " + maxPlayers)
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = true,
+            CreateNoWindow = true,
+            WorkingDirectory = Path.GetDirectoryName(serverProject),
+        };
+        var server = new Process { StartInfo = startInfo };
+        server.OutputDataReceived += (sender, e) => { if (e.Data != null) { lock (log) { log.AppendLine(e.Data); } } };
+        server.ErrorDataReceived += (sender, e) => { if (e.Data != null) { lock (log) { log.AppendLine("STDERR: " + e.Data); } } };
+        server.Start();
+        server.BeginOutputReadLine();
+        server.BeginErrorReadLine();
+        return server;
+    }
+
+    private static void KillServer(Process server)
+    {
+        try
+        {
+            if (!server.HasExited)
+            {
+                server.Kill();
+            }
+            server.WaitForExit(5000);
+        }
+        catch (Exception)
+        {
         }
     }
 
     private static int RunSingle(string test, int port)
     {
-        bool ok;
-        if (test == "handshake")
+        string[] modes = test.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+        if (modes.Length == 0)
         {
-            ok = TestHandshake(port, -1);
+            modes = new string[] { test };
         }
-        else if (test == "relay")
+        foreach (string raw in modes)
         {
-            ok = TestRelay(port);
+            string mode = raw.Trim().ToLowerInvariant();
+            bool ok;
+            string token;
+            if (mode == "handshake")
+            {
+                ok = TestHandshake(port, -1);
+                token = "HANDSHAKE_OK";
+            }
+            else if (mode == "relay")
+            {
+                ok = TestRelay(port);
+                token = "RELAY_OK";
+            }
+            else if (mode == "ping")
+            {
+                ok = TestPing(port);
+                token = "PING_OK";
+            }
+            else if (mode == "reliable")
+            {
+                ok = TestReliable(port);
+                token = "RELIABLE_OK";
+            }
+            else if (mode == "timeout")
+            {
+                ok = TestTimeout(port);
+                token = "TIMEOUT_OK";
+            }
+            else if (mode == "token")
+            {
+                ok = TestToken(port);
+                token = "TOKEN_OK";
+            }
+            else if (mode == "full")
+            {
+                // Gerencia o proprio servidor na porta dada (nao use com servidor ja em pe nela).
+                ok = TestServerFull(FindServerProject(), port);
+                token = "FULL_OK";
+            }
+            else
+            {
+                Console.WriteLine("SMOKE_FAIL: teste desconhecido '" + mode + "' (use all|handshake|relay|ping|reliable|timeout|token|full)");
+                return 1;
+            }
+            if (!ok)
+            {
+                Console.WriteLine("SMOKE_FAIL: " + mode);
+                return 1;
+            }
+            Console.WriteLine(token);
         }
-        else if (test == "ping")
-        {
-            ok = TestPing(port);
-        }
-        else
-        {
-            Console.WriteLine("SMOKE_FAIL: teste desconhecido '" + test + "' (use all|handshake|relay|ping)");
-            return 1;
-        }
-        Console.WriteLine(ok ? "SMOKE_OK" : "SMOKE_FAIL: " + test);
-        return ok ? 0 : 1;
+        Console.WriteLine("SMOKE_OK");
+        return 0;
     }
 
     private static void FailUnless(bool ok, string reason)
@@ -292,6 +351,8 @@ internal static class Program
             }
 
             Console.WriteLine("PASS handshake (IDs " + idA + " e " + idB + ", IsReady apos Confirm, recusas ok)");
+            SendDisconnect(clientA, server, idA, tokenA, ref seqA);
+            SendDisconnect(clientB, server, idB, tokenB, ref seqB);
             return true;
         }
     }
@@ -435,6 +496,8 @@ internal static class Program
             }
 
             Console.WriteLine("PASS relay (B recebeu snapshot de A intacto; sem eco; drop-old ok)");
+            SendDisconnect(clientA, server, idA, tokenA, ref seqA);
+            SendDisconnect(clientB, server, idB, tokenB, ref seqB);
             return true;
         }
     }
@@ -480,6 +543,7 @@ internal static class Program
                             return false;
                         }
                         Console.WriteLine("PASS ping (eco em " + rttMs + " ms)");
+                        SendDisconnect(client, server, id, token, ref seq);
                         return true;
                     }
                 }
@@ -490,6 +554,530 @@ internal static class Program
             Console.WriteLine("FAIL ping (sem Pong)");
             return false;
         }
+    }
+
+    private static bool TestReliable(int port)
+    {
+        using (var clientA = NewClient())
+        using (var clientB = NewClient())
+        {
+            var server = new IPEndPoint(IPAddress.Loopback, port);
+            uint seqA = 0;
+            uint seqB = 0;
+            if (!HelloConfirm(clientA, server, "Rel_A", ref seqA, out int idA, out uint tokenA) || idA <= 0)
+            {
+                Console.WriteLine("FAIL reliable (handshake A)");
+                return false;
+            }
+            if (!HelloConfirm(clientB, server, "Rel_B", ref seqB, out int idB, out uint tokenB) || idB <= 0 || idB == idA)
+            {
+                Console.WriteLine("FAIL reliable (handshake B)");
+                return false;
+            }
+
+            // 1. Chat confiavel: o servidor responde SysAck 103 antes do dispatch...
+            string marker = "retry-" + DateTime.UtcNow.Ticks;
+            uint chatSeq = ++seqA;
+            byte[] chat = BuildEnvelope(FlagReliable, chatSeq, idA, tokenA, ChatPacket, BuildChatPayload(marker));
+            clientA.Send(chat, chat.Length, server);
+            if (!ExpectSysAck(clientA, chatSeq, 3000))
+            {
+                Console.WriteLine("FAIL reliable (sem SysAck 103 para o chat)");
+                return false;
+            }
+
+            // ...e B recebe o relay; sem ACK de B, o servidor reenvia (retry 250 ms).
+            int copies = 0;
+            uint relaySeq = 0;
+            var remote = new IPEndPoint(IPAddress.Any, 0);
+            DateTime deadline = DateTime.UtcNow.AddSeconds(3);
+            clientB.Client.ReceiveTimeout = 400;
+            while (DateTime.UtcNow < deadline && copies < 2)
+            {
+                try
+                {
+                    byte[] reply = clientB.Receive(ref remote);
+                    if (TryParseHeader(reply, out int packetId, out uint rseq, out _, out _, out byte[] rbody)
+                        && packetId == ChatPacket
+                        && TryParseChatBody(rbody, out _, out string rtext)
+                        && rtext.Contains(marker))
+                    {
+                        copies++;
+                        relaySeq = rseq;
+                    }
+                }
+                catch (SocketException)
+                {
+                }
+            }
+            if (copies < 2)
+            {
+                Console.WriteLine("FAIL reliable (B recebeu " + copies + " copias; retry nao observado)");
+                return false;
+            }
+            // B confirma: os retries param (pendencia removida).
+            SendAck(clientB, server, idB, tokenB, ref seqB, relaySeq);
+
+            // 2. PLAYER_STATE unreliable nunca gera SysAck nem pendencia.
+            uint stateSeq = ++seqA;
+            byte[] state = BuildEnvelope(0, stateSeq, idA, tokenA, PlayerStateId, BuildPlayerStateBody());
+            clientA.Send(state, state.Length, server);
+            if (ExpectSysAck(clientA, stateSeq, 800))
+            {
+                Console.WriteLine("FAIL reliable (PLAYER_STATE gerou SysAck/pendencia)");
+                return false;
+            }
+
+            Console.WriteLine("PASS reliable (SysAck antes do dispatch; retry entregou " + copies + " copias; snapshot sem pendencia)");
+            if (!TestChatRules(port))
+            {
+                return false;
+            }
+            SendDisconnect(clientA, server, idA, tokenA, ref seqA);
+            SendDisconnect(clientB, server, idB, tokenB, ref seqB);
+            return true;
+        }
+    }
+
+    private static bool TestChatRules(int port)
+    {
+        using (var clientC = NewClient())
+        using (var clientD = NewClient())
+        {
+            var server = new IPEndPoint(IPAddress.Loopback, port);
+            uint seqC = 0;
+            uint seqD = 0;
+            if (!HelloConfirm(clientC, server, "Evil<Nick>", ref seqC, out int idC, out uint tokenC) || idC <= 0)
+            {
+                Console.WriteLine("FAIL chat-rules (handshake C)");
+                return false;
+            }
+            if (!HelloConfirm(clientD, server, "Chat_D", ref seqD, out int idD, out uint tokenD) || idD <= 0 || idD == idC)
+            {
+                Console.WriteLine("FAIL chat-rules (handshake D)");
+                return false;
+            }
+
+            // 1. Texto longo trunca em 350; <> somem do texto e do nick.
+            // Mensagem 1: 400 chars plain -> chega com 350.
+            uint chatSeq = ++seqC;
+            byte[] chat = BuildEnvelope(FlagReliable, chatSeq, idC, tokenC, ChatPacket, BuildChatPayload(new string('y', 400)));
+            clientC.Send(chat, chat.Length, server);
+            if (!ExpectSysAck(clientC, chatSeq, 3000))
+            {
+                Console.WriteLine("FAIL chat-rules (sem SysAck para o chat longo)");
+                return false;
+            }
+            var remote = new IPEndPoint(IPAddress.Any, 0);
+            DateTime deadline = DateTime.UtcNow.AddSeconds(3);
+            clientD.Client.ReceiveTimeout = 400;
+            bool longOk = false;
+            while (DateTime.UtcNow < deadline && !longOk)
+            {
+                try
+                {
+                    byte[] reply = clientD.Receive(ref remote);
+                    if (TryParseHeader(reply, out int packetId, out uint rseq, out _, out _, out byte[] rbody)
+                        && packetId == ChatPacket
+                        && TryParseChatBody(rbody, out string rsender, out string rtext)
+                        && rtext.Length == 350
+                        && rsender.Contains("EvilNick") && !rsender.Contains("<Nick>"))
+                    {
+                        longOk = true;
+                        SendAck(clientD, server, idD, tokenD, ref seqD, rseq);
+                    }
+                }
+                catch (SocketException)
+                {
+                }
+            }
+            if (!longOk)
+            {
+                Console.WriteLine("FAIL chat-rules (sem broadcast de 350 chars em 3 s)");
+                return false;
+            }
+            // Mensagem 2: "a<b>c>d" -> chega "abcd" (strip preservado do chat atual).
+            uint stripSeq = ++seqC;
+            byte[] strip = BuildEnvelope(FlagReliable, stripSeq, idC, tokenC, ChatPacket, BuildChatPayload("a<b>c>d"));
+            clientC.Send(strip, strip.Length, server);
+            deadline = DateTime.UtcNow.AddSeconds(3);
+            bool stripOk = false;
+            while (DateTime.UtcNow < deadline && !stripOk)
+            {
+                try
+                {
+                    byte[] reply = clientD.Receive(ref remote);
+                    if (TryParseHeader(reply, out int packetId, out uint rseq, out _, out _, out byte[] rbody)
+                        && packetId == ChatPacket
+                        && TryParseChatBody(rbody, out _, out string rtext)
+                        && rtext == "abcd")
+                    {
+                        stripOk = true;
+                        SendAck(clientD, server, idD, tokenD, ref seqD, rseq);
+                    }
+                }
+                catch (SocketException)
+                {
+                }
+            }
+            if (!stripOk)
+            {
+                Console.WriteLine("FAIL chat-rules (sem broadcast higienizado 'abcd' em 3 s)");
+                return false;
+            }
+
+            // 2. help responde so ao solicitante, em unicast.
+            uint helpSeq = ++seqC;
+            byte[] help = BuildEnvelope(FlagReliable, helpSeq, idC, tokenC, ChatPacket, BuildChatPayload("help"));
+            clientC.Send(help, help.Length, server);
+            bool helpOk = false;
+            deadline = DateTime.UtcNow.AddSeconds(3);
+            clientC.Client.ReceiveTimeout = 400;
+            while (DateTime.UtcNow < deadline && !helpOk)
+            {
+                try
+                {
+                    byte[] reply = clientC.Receive(ref remote);
+                    if (TryParseHeader(reply, out int packetId, out uint rseq, out _, out _, out byte[] rbody)
+                        && packetId == ChatPacket
+                        && TryParseChatBody(rbody, out string rsender, out string rtext)
+                        && rsender.Contains("SERVER") && rtext.Contains("Commands:"))
+                    {
+                        helpOk = true;
+                        SendAck(clientC, server, idC, tokenC, ref seqC, rseq);
+                    }
+                }
+                catch (SocketException)
+                {
+                }
+            }
+            if (!helpOk)
+            {
+                Console.WriteLine("FAIL chat-rules (sem unicast de help em 3 s)");
+                return false;
+            }
+            DateTime quiet = DateTime.UtcNow.AddMilliseconds(800);
+            while (DateTime.UtcNow < quiet)
+            {
+                try
+                {
+                    byte[] reply = clientD.Receive(ref remote);
+                    if (TryParseHeader(reply, out int packetId, out _, out _, out _, out _)
+                        && packetId == ChatPacket)
+                    {
+                        Console.WriteLine("FAIL chat-rules (help vazou para D)");
+                        return false;
+                    }
+                }
+                catch (SocketException)
+                {
+                }
+            }
+
+            Console.WriteLine("PASS chat-rules (350 chars, strip <> em texto e nick, help unicast)");
+            SendDisconnect(clientC, server, idC, tokenC, ref seqC);
+            SendDisconnect(clientD, server, idD, tokenD, ref seqD);
+            return true;
+        }
+    }
+
+    private static bool TestToken(int port)
+    {
+        using (var clientA = NewClient())
+        using (var clientC = NewClient())
+        {
+            var server = new IPEndPoint(IPAddress.Loopback, port);
+            uint seqA = 0;
+            if (!HelloConfirm(clientA, server, "Tok_A", ref seqA, out int idA, out uint tokenA) || idA <= 0)
+            {
+                Console.WriteLine("FAIL token (handshake A)");
+                return false;
+            }
+
+            // 1. Token errado: sem Pong, sem efeito.
+            long badTicks = DateTime.UtcNow.Ticks;
+            byte[] bad = BuildEnvelope(0, ++seqA, idA, unchecked(tokenA + 1), MsgPing, TicksBytes(badTicks));
+            clientA.Send(bad, bad.Length, server);
+            if (ExpectPong(clientA, badTicks, 1500))
+            {
+                Console.WriteLine("FAIL token (ping com token errado recebeu Pong)");
+                return false;
+            }
+
+            // 2. Endpoint trocado (outra porta local, mesmo ID+token): descarte.
+            uint seqC = 0;
+            long epTicks = badTicks + 1;
+            byte[] spoof = BuildEnvelope(0, ++seqC, idA, tokenA, MsgPing, TicksBytes(epTicks));
+            clientC.Send(spoof, spoof.Length, server);
+            if (ExpectPong(clientC, epTicks, 1500))
+            {
+                Console.WriteLine("FAIL token (endpoint trocado recebeu Pong)");
+                return false;
+            }
+
+            // 3. Sessao segue viva: ping valido recebe Pong.
+            long goodTicks = DateTime.UtcNow.Ticks;
+            byte[] good = BuildEnvelope(0, ++seqA, idA, tokenA, MsgPing, TicksBytes(goodTicks));
+            clientA.Send(good, good.Length, server);
+            if (!ExpectPong(clientA, goodTicks, 3000))
+            {
+                Console.WriteLine("FAIL token (sessao nao responde apos descarte)");
+                return false;
+            }
+
+            Console.WriteLine("PASS token (token errado e endpoint trocado descartados; sessao viva)");
+            SendDisconnect(clientA, server, idA, tokenA, ref seqA);
+            return true;
+        }
+    }
+
+    private static bool TestTimeout(int port)
+    {
+        using (var clientA = NewClient())
+        using (var clientB = NewClient())
+        {
+            var server = new IPEndPoint(IPAddress.Loopback, port);
+            uint seqA = 0;
+            uint seqB = 0;
+            if (!HelloConfirm(clientA, server, "Tmo_A", ref seqA, out int idA, out uint tokenA) || idA <= 0)
+            {
+                Console.WriteLine("FAIL timeout (handshake A)");
+                return false;
+            }
+            if (!HelloConfirm(clientB, server, "Tmo_B", ref seqB, out int idB, out uint tokenB) || idB <= 0 || idB == idA)
+            {
+                Console.WriteLine("FAIL timeout (handshake B)");
+                return false;
+            }
+
+            // B silencia; A faz keep-alive com Ping e aguarda o DISCONNECT de B.
+            var remote = new IPEndPoint(IPAddress.Any, 0);
+            DateTime deadline = DateTime.UtcNow.AddSeconds(16);
+            DateTime nextPing = DateTime.UtcNow;
+            clientA.Client.ReceiveTimeout = 400;
+            while (DateTime.UtcNow < deadline)
+            {
+                if (DateTime.UtcNow >= nextPing)
+                {
+                    nextPing = DateTime.UtcNow.AddMilliseconds(1200);
+                    byte[] ping = BuildEnvelope(0, ++seqA, idA, tokenA, MsgPing, TicksBytes(DateTime.UtcNow.Ticks));
+                    clientA.Send(ping, ping.Length, server);
+                }
+                try
+                {
+                    byte[] reply = clientA.Receive(ref remote);
+                    if (!TryParseHeader(reply, out int packetId, out uint rseq, out _, out _, out byte[] rbody))
+                    {
+                        continue;
+                    }
+                    if (reply.Length >= HeaderSize && (reply[3] & FlagReliable) != 0)
+                    {
+                        SendAck(clientA, server, idA, tokenA, ref seqA, rseq);
+                    }
+                    if (packetId == DisconnectPacket && rbody.Length >= 8
+                        && ReadI32(rbody, 0) == DisconnectPacket && ReadI32(rbody, 4) == idB)
+                    {
+                        Console.WriteLine("PASS timeout (DISCONNECT de " + idB + " apos silencio)");
+                        return true;
+                    }
+                }
+                catch (SocketException)
+                {
+                }
+            }
+            Console.WriteLine("FAIL timeout (sem DISCONNECT de " + idB + " em 16 s)");
+            return false;
+        }
+    }
+
+    private static bool TestServerFull(string serverProject, int port)
+    {
+        var log = new StringBuilder();
+        using (var server = SpawnServer(serverProject, port, 2, log))
+        {
+            try
+            {
+                WaitForServer(port, TimeSpan.FromSeconds(120));
+                using (var clientA = NewClient())
+                using (var clientB = NewClient())
+                using (var clientC = NewClient())
+                {
+                    var endpoint = new IPEndPoint(IPAddress.Loopback, port);
+                    uint seqA = 0;
+                    uint seqB = 0;
+                    if (!HelloConfirm(clientA, endpoint, "Full_A", ref seqA, out int idA, out uint unusedTokenA) || idA <= 0)
+                    {
+                        Console.WriteLine("FAIL server-full (handshake A)");
+                        return false;
+                    }
+                    if (!HelloConfirm(clientB, endpoint, "Full_B", ref seqB, out int idB, out uint unusedTokenB) || idB <= 0 || idB == idA)
+                    {
+                        Console.WriteLine("FAIL server-full (handshake B)");
+                        return false;
+                    }
+                    // Terceiro Hello com servidor cheio: Reject 106 SERVER_FULL.
+                    uint seqC = 0;
+                    byte[] hello = BuildEnvelope(0, ++seqC, -1, 0, MsgHello, BuildHelloPayload("Full_C"));
+                    clientC.Send(hello, hello.Length, endpoint);
+                    var remote = new IPEndPoint(IPAddress.Any, 0);
+                    DateTime deadline = DateTime.UtcNow.AddSeconds(3);
+                    clientC.Client.ReceiveTimeout = 500;
+                    while (DateTime.UtcNow < deadline)
+                    {
+                        try
+                        {
+                            byte[] reply = clientC.Receive(ref remote);
+                            if (TryParseHeader(reply, out int packetId, out _, out _, out _, out byte[] payload)
+                                && packetId == MsgReject
+                                && ReadLegacyString(payload).Contains("SERVER_FULL"))
+                            {
+                                Console.WriteLine("PASS server-full (Reject 106 SERVER_FULL sem criar sessao)");
+                                return true;
+                            }
+                        }
+                        catch (SocketException)
+                        {
+                        }
+                    }
+                    Console.WriteLine("FAIL server-full (sem Reject SERVER_FULL)");
+                    return false;
+                }
+            }
+            finally
+            {
+                KillServer(server);
+            }
+        }
+    }
+
+    private static bool ExpectSysAck(UdpClient client, uint seq, int timeoutMs)
+    {
+        var remote = new IPEndPoint(IPAddress.Any, 0);
+        int saved = client.Client.ReceiveTimeout;
+        client.Client.ReceiveTimeout = 400;
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        try
+        {
+            while (DateTime.UtcNow < deadline)
+            {
+                try
+                {
+                    byte[] reply = client.Receive(ref remote);
+                    if (TryParseHeader(reply, out int packetId, out _, out _, out _, out byte[] payload)
+                        && packetId == MsgAck && payload.Length >= 4 && ReadU32(payload, 0) == seq)
+                    {
+                        return true;
+                    }
+                }
+                catch (SocketException)
+                {
+                }
+            }
+            return false;
+        }
+        finally
+        {
+            client.Client.ReceiveTimeout = saved;
+        }
+    }
+
+    private static bool ExpectPong(UdpClient client, long ticks, int timeoutMs)
+    {
+        var remote = new IPEndPoint(IPAddress.Any, 0);
+        int saved = client.Client.ReceiveTimeout;
+        client.Client.ReceiveTimeout = 400;
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        try
+        {
+            while (DateTime.UtcNow < deadline)
+            {
+                try
+                {
+                    byte[] reply = client.Receive(ref remote);
+                    if (TryParseHeader(reply, out int packetId, out _, out _, out _, out byte[] payload)
+                        && packetId == MsgPong && payload.Length >= 8 && ReadI64(payload, 0) == ticks)
+                    {
+                        return true;
+                    }
+                }
+                catch (SocketException)
+                {
+                }
+            }
+            return false;
+        }
+        finally
+        {
+            client.Client.ReceiveTimeout = saved;
+        }
+    }
+
+    private static void SendAck(UdpClient client, IPEndPoint server, int id, uint token, ref uint seq, uint ackedSeq)
+    {
+        byte[] body = new byte[4];
+        WriteU32(body, 0, ackedSeq);
+        byte[] ack = BuildEnvelope(0, ++seq, id, token, MsgAck, body);
+        client.Send(ack, ack.Length, server);
+    }
+
+    /// <summary>
+    /// Libera o slot da sessao no servidor (evita acumular sessoes ate o
+    /// teto de MaxPlayers ao encadear varios testes no mesmo servidor).
+    /// </summary>
+    private static void SendDisconnect(UdpClient client, IPEndPoint server, int id, uint token, ref uint seq)
+    {
+        try
+        {
+            byte[] bye = BuildEnvelope(0, ++seq, id, token, DisconnectPacket, Array.Empty<byte>());
+            client.Send(bye, bye.Length, server);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private static byte[] TicksBytes(long ticks)
+    {
+        byte[] bytes = BitConverter.GetBytes(ticks);
+        if (!BitConverter.IsLittleEndian)
+        {
+            Array.Reverse(bytes);
+        }
+        return bytes;
+    }
+
+    private static byte[] BuildChatPayload(string text)
+    {
+        byte[] textBytes = Encoding.ASCII.GetBytes(text ?? string.Empty);
+        byte[] payload = new byte[4 + 4 + textBytes.Length];
+        WriteI32(payload, 0, ChatPacket);
+        WriteI32(payload, 4, textBytes.Length);
+        Buffer.BlockCopy(textBytes, 0, payload, 8, textBytes.Length);
+        return payload;
+    }
+
+    private static bool TryParseChatBody(byte[] payload, out string sender, out string text)
+    {
+        sender = string.Empty;
+        text = string.Empty;
+        if (payload == null || payload.Length < 8 || ReadI32(payload, 0) != ChatPacket)
+        {
+            return false;
+        }
+        int senderLength = ReadI32(payload, 4);
+        if (senderLength < 0 || payload.Length < 8 + senderLength + 4)
+        {
+            return false;
+        }
+        sender = Encoding.ASCII.GetString(payload, 8, senderLength);
+        int textOffset = 8 + senderLength;
+        int textLength = ReadI32(payload, textOffset);
+        if (textLength < 0 || payload.Length < textOffset + 4 + textLength)
+        {
+            return false;
+        }
+        text = Encoding.ASCII.GetString(payload, textOffset + 4, textLength);
+        return true;
     }
 
     private static UdpClient NewClient()
