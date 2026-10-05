@@ -51,15 +51,16 @@ ordem de campos.
 
 ## Transporte
 
-O servidor usa UDP. O primeiro inteiro do pacote identifica o cliente; valores
-negativos iniciam tentativa de conexao. O servidor valida o endpoint UDP antes
-de encaminhar dados ao cliente associado.
+O servidor usa UDP com um envelope versionado obrigatorio (secao abaixo):
+todo datagrama carrega `magic 0x4F43` + versao `2`; divergencia e recusada
+com `Reject 106` sem criar sessao. Nao ha envelope antigo nem fallback:
+cliente e servidor precisam ser sempre do mesmo build.
 
-A implementação oficial desse transporte pertence ao
-`OriCoopDedicatedServer.Core`. O protocolo permanece compatível com o cliente
-BepInEx atual, mas não depende de infraestrutura, namespaces ou assemblies do
-WW. O executável próprio inicializa diretamente as regras do Ori, sem carregar
-módulos externos.
+A implementação oficial desse transporte pertence ao novo core em
+`src/OriCoopDedicatedServer/OriCoopDedicatedServer/Net/` (camadas
+`Transport`/`Session`/`Game`/`Diagnostics`, sem dependencia do Core antigo,
+que saiu do build no cutover). O executável próprio inicializa diretamente
+as regras do Ori via `ServerBoot`, sem carregar módulos externos.
 
 O servidor aceita uma porta configuravel, com padrao `7777`, e um maximo
 configuravel de jogadores, limitado pelo programa entre `1` e `10`. O cliente
@@ -68,12 +69,11 @@ padrão aponta para `127.0.0.1:7777`. O dedicado vincula o listener a
 interfaces de rede disponíveis. O endereço LAN nao e descoberto pelo
 protocolo; cada cliente deve configurar manualmente o IPv4 do host.
 
-O ingresso usa duas etapas próprias: o cliente envia `-1` para solicitar um
-slot; o servidor responde `-1`, com uma mensagem de boas-vindas e o ID; então
-o cliente envia um envelope autenticado pelo ID contendo o pacote `-1` e seu
-`string nickname` (codificado no formato de rede: `int32 length` em 4 bytes little-endian
-seguido pelos bytes ASCII, compatível com `Packet.ReadString()` e `WriteLegacyString`).
-Só depois dessa confirmação o servidor marca o cliente como pronto e aceita snapshots.
+O ingresso usa handshake em 3 vias sobre o envelope: o cliente envia `Hello`
+100 com `clientId -1` e `token 0`; o servidor responde `Welcome` 101 com o ID
+atribuido e o token da sessao; o cliente confirma com `Confirm` 102 e o
+servidor marca `IsReady=true`, enviando `COLOR` inicial + `CONFIG_SYNC` em
+unicast confiavel. Só depois dessa confirmação o servidor aceita snapshots.
 O fluxo é exclusivo do transporte UDP do Ori Coop Plus.
 
 Strings em todos os pacotes devem obedecer ao formato de 4 bytes de tamanho (`int32`)
@@ -83,7 +83,7 @@ Quando o bot virtual de testes está ativo (`dummy`), o servidor aceita requisi�
 de `TELEPORT_REQUEST` direcionadas ao ID `999` (`DummyManager.DummyId`), respondendo
 com a posição flutuante atual do bot e o nick `Bot_Amigo`.
 
-## Envelope versionado (novo core `--net2`, build atual)
+## Envelope versionado (novo core, build atual)
 
 > Quebra total com builds anteriores (D-02/D-14/D-15, one-way): datagramas sem
 > `magic 0x4F43` + versao `2` sao recusados com mensagem (`Reject 106`) e nao
@@ -111,8 +111,8 @@ Mensagens de sistema (`packetId`):
 | ---: | --- | --- | --- |
 | 100 | `Hello` | cliente → servidor | `protoVer` byte + nick (`int32 length` + ASCII); header com `clientId -1`, `token 0` |
 | 101 | `Welcome` | servidor → cliente | `assignedId` int + `token` uint + `serverVer` byte |
-| 102 | `Confirm` | cliente → servidor | vazio nesta fase; marca `IsReady=true` (com token correto) |
-| 103 | `Ack` | ambos | reservado a confiabilidade (plano 02-02) |
+| 102 | `Confirm` | cliente → servidor | vazio no handshake; marca `IsReady=true` (com token correto). Re-`Confirm` com nick e tolerado e re-dispara o join (`COLOR` + `CONFIG_SYNC`) |
+| 103 | `Ack` | ambos | `uint32` LE com a `seq` confirmada; resposta imediata a todo datagrama `Reliable`, antes do dispatch |
 | 104 | `Ping` | cliente → servidor | `sendTicks` long; ecoado sem alteracao |
 | 105 | `Pong` | servidor → cliente | mesmo `sendTicks`; cliente calcula ida-volta em ms (HUD) |
 | 106 | `Reject` | servidor → cliente | motivo (`int32 length` + ASCII); nao cria sessao |
@@ -137,6 +137,17 @@ loga `Warning` com sessao e `seq` e desiste sem derrubar a sessao. ACK
 piggybacked (`AckPresent` `0x02` + `ackSeq` no header) vale como `SysAck`.
 `PLAYER_STATE` 18 e `Ping` 104 nunca geram pendencia (unreliable, sem retry).
 
+Espelho no cliente (cutover 02-04, `NetworkService.cs`): o cliente responde
+`SysAck` 103 imediato a todo datagrama `Reliable` (inclui `CONFIG_SYNC` e
+chat do servidor) e reenvia os proprios criticos (chat, `TELEPORT_REQUEST`
+15, `SKILL` 7, `COLOR` 6, `DISCONNECT` 4, `SYNC_*`) a cada 250 ms ate 3
+tentativas; `PLAYER_STATE` vai on-change + heartbeat 2,5 Hz sem retry, com
+drop-old wrap-safe por remetente; `Reject` 106 reseta para `-1` (re-handshake)
+e limpa baselines/pendencias, de modo que o re-sync pos-`Confirm` (`CONFIG`
++ snapshots correntes que o servidor reenvia) e sempre aplicado. Heartbeat e
+ping rodam na thread de rede com timeout curto — nunca em `FixedUpdate` —
+para a conexao sobreviver a pausa com o menu aberto.
+
 Todo datagrama pos-handshake valida o par endpoint fixo + `token` contra a
 sessao do `clientId`: divergencia de token ou de endpoint (IP/porta) e
 descartada com `Warning` (com `clientId` e motivo), sem atualizar `LastSeen`
@@ -146,11 +157,12 @@ O sweeper (1 s) remove sessoes com mais de 10000 ms sem datagrama valido
 `disconnectedId int`) aos restantes; servidor cheio responde `Reject` 106
 com motivo `SERVER_FULL`, sem criar sessao.
 
-Chat `-5`: corpo de entrada = `marcador int -5` + `string` legada; o servidor
-trunca o texto em 350 chars (`ChatMaxChars`), remove `<`/`>` do texto e do
-nick, responde `h`/`help`/`/h`/`/help` com a lista de comandos em unicast
-confiavel ao solicitante (remetente `SERVER`), e transmite o restante como
-`marcador -5` + `sender` formatado + texto, confiavel, aos `IsReady`.
+Chat `-5` (critico, confiavel nos dois sentidos): corpo = `marcador int -5`
++ `string` legada no envio do cliente; o servidor trunca o texto em 350 chars
+(`ChatMaxChars`), remove `<`/`>` do texto e do nick, responde `h`/`help`/
+`/h`/`/help` com a lista de comandos em unicast confiavel ao solicitante
+(remetente `SERVER`), e transmite o restante como `marcador -5` + `sender`
+formatado + texto, confiavel, aos `IsReady`.
 
 Regra de corpo legado preservado: pacotes de jogo (`PLAYER_STATE` 18 e
 demais) mantem o corpo byte-identico ao formato anterior, incluindo o
@@ -178,9 +190,9 @@ Os 6 primeiros preservam ordem e significado; os 2 novos vao ao final. Corpo
 com marcador: `int 16` + 8 bools. O servidor e autoridade: transmite
 `CONFIG_SYNC` confiavel (ACK + retry) em unicast a cada `Confirm` e em
 broadcast a cada mudanca via comando; persiste em `serverconfig.json` ao lado
-do exe (nunca zera no boot). Leitores antigos que leem so os 6 primeiros
-permanecem validos (bytes extras ao final sao ignorados); a adocao plena dos
-8 bools no cliente BepInEx entra no cutover (02-04).
+do exe (nunca zera no boot). O cliente BepInEx le os 8 com leitura tolerante
+(bytes ausentes viram `false`), dispara `ConfigSyncReceived` com os 8 valores
+e espelha o oitavo em `EntitySyncChanged`.
 
 Ao adicionar um campo, atualize o escritor no servidor, o leitor no cliente e
 esta tabela na mesma mudanca. As variaveis de rede `ES`, `cc` e `Coop_*` do
@@ -211,18 +223,20 @@ valor do marcador para dispatch sem parse. Strings continuam
 
 ## Pacote unificado PLAYER_STATE (18)
 
-`PLAYER_STATE` carrega, nesta ordem: `int playerId`, `Vector3 pos` (3 floats),
+`PLAYER_STATE` carrega, nesta ordem: `Vector3 pos` (3 floats),
 `byte state` (`ActionVisualState` — autoridade da animacao),
 `byte flags` (bit 0 `FacingLeft`, bit 1 `IsGrounded`),
-`int animHash` (`uint` FNV1a reinterpretado como `int`, pois o `Packet` do
-servidor nao possui `Write(uint)`), `float speedX`, `float speedY` (velocidade
-real do `Sein.Speed`) e `string nick` no formato legado (`int32` + ASCII).
-O servidor retransmite os bytes como recebeu, reescrevendo apenas `playerId`
-e `nick`, sem fundir nem inferir nada.
+`int animHash` (`uint` FNV1a reinterpretado como `int`),
+`float speedX`, `float speedY` (velocidade real do `Sein.Speed`) e
+`string nick` no formato legado (`int32` + ASCII), sempre precedidos do
+marcador `int 18`. A identidade do remetente viaja no `clientId` do header
+do envelope (nunca no corpo) e o relay reemite os bytes originais sem
+reconstrucao nem fusao.
 
-`POSITION` (1) + `ANIM` (2) fragmentados estão depreciados e serão removidos
-no passo seguinte do rework (sem compatibilidade retroativa: cliente e
-servidor sempre do mesmo build).
+`POSITION` (1) + `ANIM` (2) fragmentados foram removidos no rework de
+sincronia de anims (ver tabela de removidos); so `PLAYER_STATE` (18) trafega
+posicao+anim. IDs 1 e 2 nunca serão reutilizados. Cliente e servidor sempre
+do mesmo build.
 
 ## Fragmentacao POSITION/ANIM (causa raiz do bug #2 — REMOVIDA)
 

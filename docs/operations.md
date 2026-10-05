@@ -47,24 +47,24 @@ Também é possível compilar via dotnet CLI se o SDK .NET compatível estiver i
 dotnet build .\src\OriCoopPlus\OriCoopBepInEx\OriCoopBepInEx.csproj --configuration Release
 ```
 
-### Build alternativo sem SDK instalado
+### Build do servidor sem `dotnet` na maquina (fallback historico)
 
-Se a maquina tiver apenas o runtime .NET (sem SDK), como ocorreu em 05/10/2026:
+Se algum dia a maquina tiver apenas o runtime .NET (sem SDK), como ocorreu
+em 05/10/2026 antes da instalacao do SDK 8.0.425, o fallback e baixar os
+pacotes NuGet `Microsoft.Net.Compilers.Toolset` (Roslyn) e
+`Microsoft.NETCore.App.Ref` (assemblies de referencia), extrair e compilar
+com `dotnet <toolset>/tasks/netcore/bincore/csc.dll /nostdlib+` referenciando
+`ref/net8.0/*.dll`. Com o SDK instalado (caso atual), prefira o `dotnet build`
+da secao Build acima. Nota: o `OriCoopDedicatedServer.Core.dll` antigo nao e
+mais gerado (Core fora do build desde o cutover 02-04).
 
 1. Cliente: `build.ps1` funciona normalmente, pois usa `csc.exe` do
    .NET Framework (limitado a C# 5 — nao usar interpolacao `$""`, `?.`,
    `Action` com mais de 4 parametros ou `Object.Instantiate` sem cast no
    codigo do plugin).
-2. Servidor (`net8.0`, C# moderno): baixe os pacotes NuGet
-   `Microsoft.Net.Compilers.Toolset` (Roslyn) e `Microsoft.NETCore.App.Ref`
-   (assemblies de referencia), extraia e compile com
-   `dotnet <toolset>/tasks/netcore/bincore/csc.dll /nostdlib+` referenciando
-   `ref/net8.0/*.dll`. Saida esperada: `OriCoopDedicatedServer.Core.dll` e
-   `OriCoopDedicatedServer.dll` (reutilize `OriCoopDedicatedServer.exe`,
-   `.deps.json`, `.runtimeconfig.json` e `start_server.bat` do build anterior,
-   pois o apphost e os metadados nao mudaram). Valide com
-   `.\OriCoopDedicatedServer.exe --auto --max-players 2 --port 7779` e com
-   `coop` + `stop` via stdin (deve listar `Teleporte: ATIVADO` por padrao).
+2. Servidor (`net8.0`, C# moderno): apos compilar, valide com
+   `.\OriCoopDedicatedServer.exe --auto --max-players 2 --port 7779`
+   e com `coop` + `stop` via stdin (deve listar `Teleporte: ATIVADO` por padrao).
 
 ## Instalacao
 
@@ -74,10 +74,15 @@ Com `<ORI_DIR>` apontando para a pasta do jogo:
 <ORI_DIR>\BepInEx\plugins\OriCoopBepInEx.dll
 <ORI_DIR>\Server\OriCoopDedicatedServer.exe
 <ORI_DIR>\Server\OriCoopDedicatedServer.dll
-<ORI_DIR>\Server\OriCoopDedicatedServer.Core.dll
 <ORI_DIR>\Server\OriCoopDedicatedServer.deps.json
 <ORI_DIR>\Server\OriCoopDedicatedServer.runtimeconfig.json
 ```
+
+O `OriCoopDedicatedServer.Core.dll` antigo nao faz mais parte da instalacao
+(Core fora do build desde o cutover 02-04; pode ser removido do `Server\` se
+ainda existir de builds anteriores). O servidor grava `serverconfig.json`
+(opcoes persistentes) e `Logs\server.log` (niveis Debug/Info/Warning/Error)
+ao lado do exe.
 
 Feche `OriDE.exe` e o servidor antes de substituir DLLs.
 
@@ -111,7 +116,8 @@ nao copie referencias privadas para a pasta do plugin.
    ```
 
 6. Confirme no console `Server started on 7777` e
-   `Ori Coop Plus Server Module CARREGADO`.
+   `Ori Coop Plus Server Module CARREGADO` (novo core e o unico path desde o
+   cutover 02-04; a flag `--net2` nao e mais necessaria).
 7. No arquivo
    `<ORI_DIR>\BepInEx\config\com.ikkikuuro.oricoop.cfg`, use:
 
@@ -248,10 +254,11 @@ O jogador se conecta exclusivamente ao executável
 | --- | --- |
 | `/coop` | mostra/configura `tp`, `abilities`, `story`, `world`, `doors` e `names` |
 | `/tp <origem> <destino>` | teleporta a origem ate o destino; alias `/teleport`; com log de diagnóstico no cliente (`Teleporte recebido/aplicado/fixado`) |
+| `/help` | lista os comandos; aliases `h`, `ajuda`, `?` (via chat, responde em unicast ao solicitante) |
+| `/stop` | encerra o servidor; aliases `quit`, `exit`, `sair` |
 | `/clientcolors` | alterna cores de clientes; aliases `cc`, `clientc`, `ccolors` |
 | `/entitysync` | alterna sincronizacao de entidades; aliases `es`, `sync` |
 | `/dummy` | controla o bot de teste; aliases `bot`, `testbot`, `fakeplayer`, `fakepl`, `fp`; `echo [on\|off]` espelha suas anims com ping 20-150 ms, `anim [on\|off\|<estado>]` performa ciclo roteirizado para validar anims do puppet |
-| `/fakeplayer` | alterna o jogador falso avancado; aliases `fakepl`, `fp` |
 
 Exemplos:
 
@@ -277,9 +284,9 @@ Use `/coop` sem argumentos para consultar o estado atual.
 9. Com dois jogadores em uma cena controlavel, ative `/coop tp on`, aguarde
    snapshots e pressione `T` em um cliente; confirme a mensagem colorida e a
    mudanca de posicao. Depois teste `/tp <origem> <destino>` no console.
-10. Ative `entitysync` e confirme nos logs do cliente a recepcao da variavel
-    `ES`; a sincronizacao visual de entidades alem dos jogadores ainda esta
-    **a confirmar**.
+10. Ative `entitysync` e confirme nos logs do cliente a recepcao do oitavo
+    bool do `CONFIG_SYNC` (evento `EntitySyncChanged`); a sincronizacao
+    visual de entidades alem dos jogadores ainda esta **a confirmar**.
 11. Confirme no canto superior esquerdo o HUD `ORI COOP PLUS`, com uma linha
     por jogador contendo nick, coordenadas e ping. `--` indica que a primeira
     resposta de ping ainda nao chegou.
@@ -415,18 +422,44 @@ Checagem extra de restart (manual): hash de `serverconfig.json` antes/depois
 de stop+start identico (`PERSIST_OK`). Modo `game` tambem roda dentro do
 `--test all` (servidor proprio na porta `all+21`).
 
-Uso manual do novo core (path antigo continua sendo o default sem `--net2`):
+Uso manual do novo core (unico path desde o cutover 02-04; `--net2` ainda e
+aceito como no-op para compatibilidade com scripts):
 
 ```powershell
-.\OriCoopDedicatedServer.exe --net2 --auto --port 7777 --max-players 4
+.\OriCoopDedicatedServer.exe --auto --port 7777 --max-players 4
 ```
 
-**Implantada:** `OriCoopBepInEx.dll` (79.360 bytes, envelope novo exclusivo,
-sem fallback legado) em `C:\...\Ori DE\BepInEx\plugins\` e servidor com novo
-core em `C:\...\Ori DE\Server\` em 2026-10-05. Boot do binario implantado
-validado (`Novo core ouvindo na porta 7779`). `D:\SteamLibrary\...` nao existe
-nesta maquina — deploy feito so em `C:\...`. Valicacao em jogo com 2 clientes
-reais ainda **a confirmar** (cutover e checklist no plano 02-04).
+### Cutover 02-04 — cliente completo + core unico + deploy (2026-10-05)
+
+Cliente BepInEx completo no novo framing (`NetworkService.cs`): `CONFIG_SYNC`
+de 8 bools com leitura tolerante (`ConfigSyncReceived` com 8 valores +
+`EntitySyncChanged` no oitavo); chat, `TELEPORT_REQUEST` 15, `SKILL` 7,
+`COLOR` 6, `DISCONNECT` 4 e `SYNC_*` como `Reliable` com retry 250 ms x3;
+`SysAck` 103 imediato a todo `Reliable` (inclui `CONFIG` do servidor);
+`PLAYER_STATE` on-change + heartbeat 2,5 Hz sem retry, com drop-old
+wrap-safe por remetente; snapshots enfileirados pelo jogo e drenados na
+thread de rede (nenhum envio em `FixedUpdate`); `Reject` 106 reseta para
+re-handshake; sem branches legados. Servidor: `Program` sempre `ServerBoot`
+(Core antigo fora do build, sem `ProjectReference`; arquivos legados ficam no
+disco como referencia), console via `CommandRegistry`, log em `Logs/server.log`
++ console com niveis, prompt interativo com clamp 1–10 e porta 1–65535.
+
+Validacao do cutover (binario do build, sem `--net2`):
+`.\OriCoopDedicatedServer.exe --auto --max-players 2 --port 7779` com `coop`
+(lista `Teleporte: ATIVADO` por padrao) + `stop` via stdin, exit limpo, log
+em `Logs/server.log` com niveis. Regressao total via SmokeProbe
+(`--test all` => `SMOKE_OK`, 15 PASS incl. `game`).
+
+**Implantada:** `OriCoopBepInEx.dll` (83.968 bytes, cliente completo,
+envelope novo exclusivo, sem fallback legado) em
+`C:\...\Ori DE\BepInEx\plugins\` e servidor do novo core
+(`OriCoopDedicatedServer.dll` 103.936 bytes + exe + `deps.json` +
+`runtimeconfig.json`; `Core.dll` removido do `Server\`) em
+`C:\...\Ori DE\Server\` em 2026-10-05, com jogo e servidor fechados antes da
+copia. Boot do binario implantado validado (`serverconfig.json` criado com
+padroes + `coop` => `Teleporte: ATIVADO` + `stop` limpo).
+`D:\SteamLibrary\...` nao existe nesta maquina — deploy feito so em `C:\...`.
+Validacao em jogo com 2 clientes reais ainda **a confirmar**.
 
 1. **Compilacao:**
    - `OriCoopDedicatedServer.csproj` compilado com sucesso (.NET 8.0 Release).

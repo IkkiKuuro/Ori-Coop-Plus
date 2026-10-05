@@ -23,7 +23,8 @@ namespace OriCoopBepInEx.Networking
     // ate o SysAck do servidor. PLAYER_STATE e Ping seguem unreliable, sem
     // pendencia (D-09). Recepcao de snapshots com drop-old wrap-safe por
     // remetente (D-11). Heartbeat de estado + Ping rodam na thread de rede com
-    // ReceiveTimeout — nunca em FixedUpdate — para sobreviver a pausa (D-07).
+    // ReceiveTimeout; o jogo so enfileira snapshots, nunca envia direto —
+    // nenhum envio ocorre em FixedUpdate (D-07).
     public sealed class NetworkService : INetworkService
     {
         // Chat usa o ID -5 do contrato atual (nao e legado: o servidor o
@@ -54,6 +55,7 @@ namespace OriCoopBepInEx.Networking
         private int _assignedId = -1;
         private uint _sessionToken;
         private uint _sendSeq;
+        private PlayerSnapshot _queuedSnapshot;
         private string _nickname;
         private string _lastRejectReason = string.Empty;
         private long _lastPingSentTicks;
@@ -139,6 +141,26 @@ namespace OriCoopBepInEx.Networking
             if (snapshot == null)
             {
                 throw new ArgumentNullException("snapshot");
+            }
+            // Enfileira apenas: o envio real acontece na thread de rede
+            // (FlushSnapshot), nunca na thread do jogo/FixedUpdate (D-07).
+            lock (_sync)
+            {
+                _queuedSnapshot = snapshot;
+            }
+        }
+
+        private void FlushSnapshot()
+        {
+            PlayerSnapshot snapshot;
+            lock (_sync)
+            {
+                snapshot = _queuedSnapshot;
+                _queuedSnapshot = null;
+            }
+            if (snapshot == null)
+            {
+                return;
             }
             if (_assignedId < 0)
             {
@@ -445,6 +467,10 @@ namespace OriCoopBepInEx.Networking
                     }
 
                     PumpRetries();
+
+                    // Dreno do snapshot mais recente enfileirado pelo jogo:
+                    // on-change + heartbeat 2,5 Hz, sempre na thread de rede.
+                    FlushSnapshot();
 
                     byte[] datagram = _client.Receive(ref endpoint);
                     ReadServerPacket(datagram);

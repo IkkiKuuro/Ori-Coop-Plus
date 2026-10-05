@@ -12,15 +12,22 @@ OriDE.exe
        ├─ AnimationRegistry (catálogo pré-aquecido e fallback de poses)
        └─ Harmony + NetworkService + Patches
 
-OriCoopDedicatedServer.exe
-  └─ OriCoopDedicatedServer.Core.dll
-       └─ UDP + pacotes + comandos + regras do Ori
+OriCoopDedicatedServer.exe (novo core, sem dependencias externas)
+  └─ Net/
+       ├─ Transport (EnvelopeCodec 24B + UdpTransport com Channel)
+       ├─ Session (SessionManager: token, endpoint fixo, sweeper 10 s)
+       ├─ Game (ServerBoot, GameHandlers, ConfigStore, DummyBot, Commands)
+       └─ Diagnostics (FileConsoleLogger: console + Logs/server.log)
 ```
 
-O projeto `OriCoopDedicatedServer` fornece uma infraestrutura própria: servidor
-UDP, clientes conectados, pacotes, eventos e comandos de console. As regras do
-Ori são compiladas no executável próprio; não existe dependência de servidor
-ou API de multiplayer externa.
+O `OriCoopDedicatedServer.Core` antigo saiu do build no cutover (02-04):
+permanece no disco como referencia, mas o exe nao o referencia nem o
+compila. Nao ha dual-stack nem fallback de protocolo.
+
+O projeto `OriCoopDedicatedServer` e autonomo: servidor UDP com envelope
+versionado `0x4F43`/v2, sessoes com token, confiabilidade por pacote
+(ACK + retry) e regras do Ori compiladas no executável próprio; não existe
+dependência de servidor ou API de multiplayer externa, nem do Core antigo.
 
 ## Projetos
 
@@ -28,8 +35,8 @@ ou API de multiplayer externa.
 | --- | --- | --- | --- |
 | `OriCoopBepInEx` | `.NET Framework 3.5` | `OriCoopBepInEx.dll` | plugin BepInEx 5.x, replicação e blindagem visual de entidades |
 | `OriCoopShared` | arquivos compartilhados | incorporado nos dois modulos | enums, dados de sincronização, configuração e contrato comum |
-| `OriCoopDedicatedServer.Core` | `.NET 8.0` | `OriCoopDedicatedServer.Core.dll` | transporte UDP, ciclo de vida, API e console |
-| `OriCoopDedicatedServer` | `.NET 8.0` | `OriCoopDedicatedServer.exe` | servidor dedicado independente do WW |
+| `OriCoopDedicatedServer.Core` | legado, fora do build | (nenhuma) | Core antigo: transporte/sessao/comandos pre-rewrite; fica no disco como referencia, sem `ProjectReference` |
+| `OriCoopDedicatedServer` | `.NET 8.0` | `OriCoopDedicatedServer.exe` | servidor dedicado: `Net/` (transporte, sessao, jogo, diagnostico) + `SmokeProbe` de validacao |
 
 O cliente referencia DLLs instaladas pelo jogo em `oriDE_Data\Managed` e o `BepInEx.dll`
 de `API\Client\`. A compilação é suportada via script dedicado (`build.ps1`) ou via
@@ -53,11 +60,19 @@ A arquitetura do cliente BepInEx está documentada em
 
 ### Servidor
 
-1. `Program` escolhe máximo de jogadores e porta.
-2. `Server.Start` abre o listener UDP e cria os slots de clientes.
-3. O servidor registra os comandos de infraestrutura.
-4. `OriCoopServerModule.OnEnable` zera as opções cooperativas, registra handlers
-   e registra os comandos do Ori.
+1. `Program` escolhe máximo de jogadores (1–10) e porta (1–65535), via
+   argumentos (`--auto`, `--max-players`, `--port`, posicionais) ou prompt
+   interativo.
+2. `ServerBoot` carrega `serverconfig.json` (sem zerar opcoes), instancia
+   logger (`Logs/server.log` + console), sessoes, transporte e camada Game, e
+   liga mudancas de config ao broadcast.
+3. `NetServerHost` abre o listener UDP em `IPAddress.Any`, loga os enderecos
+   LAN, anuncia `Server started on <porta>` + `Module CARREGADO` e processa
+   receive (`UdpTransport` + `Channel`) → dispatch (sessao + `GameHandlers`) →
+   send, com timers de retry (250 ms) e sweeper (10 s).
+4. O loop de console despacha via `CommandRegistry` instanciado
+   (`coop`/`tp`/`dummy`/`clientcolors`/`entitysync`/`help`/`stop`); `stop`
+   sinaliza o `CancellationToken` e encerra limpo.
 
 ## Estado e responsabilidades
 
@@ -71,6 +86,8 @@ A arquitetura do cliente BepInEx está documentada em
 
 ## Compatibilidade
 
-Cliente e servidor devem ser distribuídos como um par. O contrato de
-`PacketType`, a ordem dos campos e os recursos de configuração precisam
-permanecer compatíveis. Ao mudar um pacote, compile e teste os dois módulos.
+Cliente e servidor devem ser distribuídos como um par do mesmo build. O
+contrato de `PacketType`/`NetProtocol`, a ordem dos campos e os recursos de
+configuração precisam permanecer compatíveis — nao ha fallback para builds
+antigos (quebra one-way D-02/D-14/D-15). Ao mudar um pacote, compile e teste
+os dois módulos.
