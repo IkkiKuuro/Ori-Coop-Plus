@@ -194,8 +194,12 @@ namespace OriCoopBepInEx.UI
 
             try
             {
-                CustomMessageProvider provider = new CustomMessageProvider(message);
-                Game.UI.Hints.Show(provider, HintLayer.Gameplay, duration);
+                if (Game.UI.MessageController != null && Game.Characters.Sein != null)
+                {
+                    CustomMessageProvider provider = ScriptableObject.CreateInstance<CustomMessageProvider>();
+                    provider.Text = message;
+                    Game.UI.Hints.Show(provider, HintLayer.Gameplay, duration);
+                }
             }
             catch (Exception ex)
             {
@@ -207,14 +211,9 @@ namespace OriCoopBepInEx.UI
         {
             public string Text { get; set; }
 
-            public CustomMessageProvider(string text)
-            {
-                Text = text;
-            }
-
             public override IEnumerable<MessageDescriptor> GetMessages()
             {
-                yield return new MessageDescriptor(Text);
+                yield return new MessageDescriptor(Text ?? string.Empty);
             }
         }
     }

@@ -40,13 +40,18 @@ Plugin/OriCoopPlugin
 - **Client (Entidades Remotas e Visibilidade):**
   - `RemotePlayerManager`: Cria, atualiza e descarta instâncias de `RemotePlayerPuppet`
     conforme snapshots são recebidos ou jogadores desconectam.
-  - `RemotePuppetFactory`: Clona a hierarquia visual de `Game.Characters.Sein`,
-    removendo estritamente scripts de input (`SeinController`, `SeinInput`), física
-    concorrente (`Rigidbody`), controladores de morte/inventário e otimizadores de
-    frustum nativos. O GameObject resultante é alocado sob `DontDestroyOnLoad`.
-  - `RemoteVisualController`: Atua em `LateUpdate()` como watchdog, garantindo que
+  - `RemotePuppetFactory`: Clona a hierarquia visual de `Game.Characters.Sein`.
+    A fonte é temporariamente desativada antes do `Instantiate` para impedir que `Awake()`
+    ou `OnEnable()` sejam disparados precocemente nos componentes do clone. Além disso, as
+    referências globais `Game.Characters.Sein` e `Game.Characters.Current` são estritamente
+    preservadas em blocos `try/finally` para evitar anulação da entidade local. A limpeza
+    elimina filhos sem renderizadores/animadores, desativa imediatamente todos os `Behaviour`
+    restantes e remove scripts `MonoBehaviour` antes de físicas (`Rigidbody`/`Collider`),
+    alocando a instância sob `DontDestroyOnLoad`.
+  - `RemoteVisualController`: Atua em `LateUpdate()` como watchdog com taxa limitada (2x/s)
+    e cache de propriedades de shader (`Shader.PropertyToID`), garantindo que
     `MeshRenderer.enabled` e `gameObject.activeSelf` permaneçam ativos e que o canal
-    alpha dos materiais não seja zerado por cutscenes ou gatilhos de cenário.
+    alpha dos materiais não seja zerado sem onerar a CPU a cada frame.
   - `AnimationRegistry`: Pré-aquece o catálogo de `TextureAnimationWithTransitions`
     carregados em memória e resolve animações por nome ou hash FNV-1a, oferecendo
     heurísticas de fallback de movimento (`Running`, `Falling`, `Jump`, `Idle`) para

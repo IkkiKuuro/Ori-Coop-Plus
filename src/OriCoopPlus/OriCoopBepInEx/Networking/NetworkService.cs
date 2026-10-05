@@ -35,6 +35,7 @@ namespace OriCoopBepInEx.Networking
         public event Action<bool> EntitySyncChanged;
         public event Action<int> PingUpdated;
         public event Action<string, int> IdentityAssigned;
+        public event Action<int> PlayerDisconnected;
 
         public NetworkService(string host, int port, int playerId, string nickname)
         {
@@ -288,6 +289,15 @@ namespace OriCoopBepInEx.Networking
                     if (handler != null)
                     {
                         handler(sender, message);
+                    }
+                }
+                else if (packetId == (int)PacketType.DISCONNECT)
+                {
+                    int disconnectedId = reader.ReadInt32();
+                    Action<int> handler = PlayerDisconnected;
+                    if (handler != null)
+                    {
+                        handler(disconnectedId);
                     }
                 }
                 else if (packetId == NetworkVariablePacket)

@@ -88,7 +88,10 @@ namespace OriCoopBepInEx.Client
             bool applied = false;
             if (targetClip != null)
             {
-                _animator.SetAnimation(targetClip, true);
+                if (_animator.CurrentAnimation != targetClip)
+                {
+                    _animator.SetAnimation(targetClip, true);
+                }
                 applied = true;
             }
 
