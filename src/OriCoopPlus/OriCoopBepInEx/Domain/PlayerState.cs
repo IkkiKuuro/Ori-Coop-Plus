@@ -1,6 +1,7 @@
+using OriCoop;
+
 namespace OriCoopBepInEx.Domain
-{
-    public struct Vector2Data
+{    public struct Vector2Data
     {
         public float X;
         public float Y;
@@ -39,6 +40,9 @@ namespace OriCoopBepInEx.Domain
     {
         public string Name;
         public bool FacingLeft;
+        public ActionVisualState State;
+        public bool IsGrounded;
+        public uint AnimNameHash;
     }
 
     public sealed class PlayerSnapshot

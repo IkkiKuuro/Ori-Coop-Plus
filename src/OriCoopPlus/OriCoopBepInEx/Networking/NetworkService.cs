@@ -121,6 +121,32 @@ namespace OriCoopBepInEx.Networking
                     writer.Flush();
                     SendEnvelope(body.ToArray());
                 }
+
+                using (MemoryStream stateBody = new MemoryStream())
+                using (BinaryWriter stateWriter = new BinaryWriter(stateBody))
+                {
+                    stateWriter.Write((int)PacketType.PLAYER_STATE);
+                    stateWriter.Write(snapshot.Position.X);
+                    stateWriter.Write(snapshot.Position.Y);
+                    stateWriter.Write(snapshot.Position.Z);
+                    stateWriter.Write((byte)snapshot.Animation.State);
+                    byte flags = 0;
+                    if (snapshot.Animation.FacingLeft)
+                    {
+                        flags |= 1;
+                    }
+                    if (snapshot.Animation.IsGrounded)
+                    {
+                        flags |= 2;
+                    }
+                    stateWriter.Write(flags);
+                    stateWriter.Write(unchecked((int)snapshot.Animation.AnimNameHash));
+                    stateWriter.Write(snapshot.Velocity.X);
+                    stateWriter.Write(snapshot.Velocity.Y);
+                    WriteLegacyString(stateWriter, !string.IsNullOrEmpty(snapshot.Nick) ? snapshot.Nick : _nickname);
+                    stateWriter.Flush();
+                    SendEnvelope(stateBody.ToArray());
+                }
             }
 
         }
@@ -285,6 +311,20 @@ namespace OriCoopBepInEx.Networking
                     PlayerSnapshot snapshot = new PlayerSnapshot();
                     snapshot.PlayerId = reader.ReadInt32();
                     snapshot.Animation.Name = ReadLegacyString(reader);
+                    RaiseSnapshot(snapshot);
+                }
+                else if (packetId == (int)PacketType.PLAYER_STATE)
+                {
+                    PlayerSnapshot snapshot = new PlayerSnapshot();
+                    snapshot.PlayerId = reader.ReadInt32();
+                    snapshot.Position = new Vector3Data(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                    snapshot.Animation.State = (ActionVisualState)reader.ReadByte();
+                    byte flags = reader.ReadByte();
+                    snapshot.Animation.FacingLeft = (flags & 1) != 0;
+                    snapshot.Animation.IsGrounded = (flags & 2) != 0;
+                    snapshot.Animation.AnimNameHash = unchecked((uint)reader.ReadInt32());
+                    snapshot.Velocity = new Vector2Data(reader.ReadSingle(), reader.ReadSingle());
+                    snapshot.Nick = ReadLegacyString(reader);
                     RaiseSnapshot(snapshot);
                 }
                 else if (packetId == (int)PacketType.TELEPORT_REQUEST)

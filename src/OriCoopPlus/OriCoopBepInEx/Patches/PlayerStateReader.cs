@@ -1,4 +1,5 @@
 using System;
+using OriCoop;
 using OriCoopBepInEx.Domain;
 using UnityEngine;
 
@@ -33,6 +34,13 @@ namespace OriCoopBepInEx.Patches
             snapshot.Velocity = new Vector2Data(speed.x, speed.y);
             snapshot.Animation.FacingLeft = sein.FaceLeft;
             snapshot.Animation.Name = ReadCurrentAnimationName(sein);
+            // TEMP-TRACER: grounded real ainda a confirmar via Assembly-CSharp;
+            // heurística provisória até o plano 02.
+            snapshot.Animation.IsGrounded = Mathf.Abs(speed.y) < 1.0f;
+            snapshot.Animation.State = AnimationSyncData.DeriveState(
+                speed.x, speed.y, snapshot.Animation.IsGrounded);
+            snapshot.Animation.AnimNameHash = AnimationSyncData.ComputeFnv1aHash(
+                snapshot.Animation.Name);
             snapshot.Timestamp = DateTime.UtcNow.Ticks;
 
             return snapshot;
