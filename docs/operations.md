@@ -525,6 +525,7 @@ Validacao em jogo com 2 clientes reais ainda **a confirmar**.
 | DLL nao pode ser copiada | encerre o jogo e `OriCoopDedicatedServer.exe` |
 | Servidor cheio | reduza conexoes ou inicie com maximo entre 1 e 10 |
 | Cliente LAN nao conecta | confirme o IPv4 `LAN address`, a porta UDP, o firewall do host e se todos estao na mesma rede |
+| Cliente fica em "Conectando..." e o servidor so registra drops de 4B | **Host errado ou scan legado**: (1) confira `Host` no cfg — mesmo PC usa `127.0.0.1`; o dialogo F6 conecta no IP digitado e o reutiliza na proxima abertura; (2) o botao `Buscar LAN` agora sonda com Hello versionado e so detecta servidor do build atual (sonda legada de 4 bytes e descartada pelo core novo). |
 | `KeyNotFoundException` com a chave `4` ao conectar | substitua o executavel pelo build atual; o servidor deve criar e percorrer exatamente os slots configurados |
 | `RECIVE UDP CALLBACK ERROR: Could not read value of type 'string'!` em `ClientDoneMessage` | Incompatibilidade de serializacao de string no handshake (`BinaryWriter.Write(string)` gerava LEB128 em vez de Int32). Corrigido com `WriteLegacyString` no cliente e leitura segura no `ServerHandle`. |
 | `No remote player is available for teleport` com bot `dummy` ativo | O `DummyManager` (ID 999) nao estava incluido na lista de clientes validos para teleporte. Suporte adicionado no handler `TELEPORT_REQUEST` do servidor e no comando `/tp`. |
