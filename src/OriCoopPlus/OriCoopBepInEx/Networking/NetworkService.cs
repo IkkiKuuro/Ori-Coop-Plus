@@ -16,16 +16,39 @@ namespace OriCoopBepInEx.Networking
     // NetProtocol; corpos de jogo preservados byte-identicos ao legado
     // (PLAYER_STATE inclui leading int 18; o playerId do remetente viaja no
     // header clientId — o servidor reemite os bytes sem reconstrucao).
+    //
+    // Confiabilidade (D-10): todo datagrama com flag Reliable recebido gera
+    // SysAck 103 imediato; todo envio confiavel (chat, TELEPORT 15, SKILL 7,
+    // COLOR 6, DISCONNECT 4, SYNC_*) e reenviado a cada 250 ms ate 3 tentativas
+    // ate o SysAck do servidor. PLAYER_STATE e Ping seguem unreliable, sem
+    // pendencia (D-09). Recepcao de snapshots com drop-old wrap-safe por
+    // remetente (D-11). Heartbeat de estado + Ping rodam na thread de rede com
+    // ReceiveTimeout — nunca em FixedUpdate — para sobreviver a pausa (D-07).
     public sealed class NetworkService : INetworkService
     {
-        private const int ChatPacket = -5;
-        private const int NetworkVariablePacket = -3;
+        // Chat usa o ID -5 do contrato atual (nao e legado: o servidor o
+        // trata como pacote critico confiavel). Os pacotes legados de IDs
+        // negativos (handshake antigo, NBMessage, NetworkVar, RPC e ping
+        // antigo) nao existem mais neste arquivo: a variavel de rede
+        // NetworkVar foi absorvida pelos 2 bools finais do CONFIG_SYNC.
+        private const int ChatPacketId = -5;
         private const long PingIntervalTicks = TimeSpan.TicksPerSecond * 2;
+        private const long HelloIntervalTicks = TimeSpan.TicksPerMillisecond * 500;
+        private const long HeartbeatIntervalTicks = TimeSpan.TicksPerMillisecond * 400;
+
+        private sealed class PendingSend
+        {
+            public uint Seq;
+            public byte[] Datagram;
+            public long NextRetryTicks;
+            public int Attempts;
+        }
 
         private readonly UdpClient _client;
         private readonly IPEndPoint _server;
         private readonly object _sync = new object();
         private readonly Dictionary<int, uint> _lastRelaySeq = new Dictionary<int, uint>();
+        private readonly Dictionary<uint, PendingSend> _pending = new Dictionary<uint, PendingSend>();
         private Thread _receiveThread;
         private bool _running;
         private int _assignedId = -1;
@@ -34,11 +57,11 @@ namespace OriCoopBepInEx.Networking
         private string _nickname;
         private string _lastRejectReason = string.Empty;
         private long _lastPingSentTicks;
+        private long _lastHelloSentTicks;
         private byte _lastSentState = 255;
         private int _lastSentHash;
         private Vector3Data _lastSentPos;
         private long _lastSentTicks;
-        private const long HeartbeatIntervalTicks = TimeSpan.TicksPerMillisecond * 400;
 
         public bool IsConnected
         {
@@ -71,7 +94,7 @@ namespace OriCoopBepInEx.Networking
             }
 
             _client = new UdpClient(AddressFamily.InterNetwork);
-            _client.Client.ReceiveTimeout = 1000;
+            _client.Client.ReceiveTimeout = 250;
             IPAddress[] addresses = Dns.GetHostAddresses(host);
             IPAddress serverAddress = null;
             for (int i = 0; i < addresses.Length; i++)
@@ -92,7 +115,7 @@ namespace OriCoopBepInEx.Networking
             // o PlayerId da config e apenas dica e nao e mais usado direto.
             _assignedId = -1;
             _sessionToken = 0;
-            _nickname = string.IsNullOrEmpty(nickname) ? "NONICK" : nickname.Trim();
+            _nickname = StripBrackets(string.IsNullOrEmpty(nickname) ? "NONICK" : nickname.Trim());
         }
 
         public void Start()
@@ -160,6 +183,7 @@ namespace OriCoopBepInEx.Networking
                 stateWriter.Write(snapshot.Velocity.Y);
                 WriteLegacyString(stateWriter, !string.IsNullOrEmpty(snapshot.Nick) ? snapshot.Nick : _nickname);
                 stateWriter.Flush();
+                // Snapshots sao unreliable por desenho (D-09): sem retry.
                 SendSystem((int)PacketType.PLAYER_STATE, stateBody.ToArray(), 0);
             }
 
@@ -186,7 +210,194 @@ namespace OriCoopBepInEx.Networking
                 writer.Write((int)PacketType.TELEPORT_REQUEST);
                 writer.Write(targetPlayerId);
                 writer.Flush();
-                SendSystem((int)PacketType.TELEPORT_REQUEST, body.ToArray(), 0);
+                SendReliable((int)PacketType.TELEPORT_REQUEST, body.ToArray());
+            }
+        }
+
+        public void SendChatMessage(string text)
+        {
+            if (_assignedId < 0 || string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            string clipped = text.Length > NetProtocol.ChatMaxChars
+                ? text.Substring(0, NetProtocol.ChatMaxChars)
+                : text;
+            using (MemoryStream body = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(body))
+            {
+                writer.Write(ChatPacketId);
+                WriteLegacyString(writer, clipped);
+                writer.Flush();
+                SendReliable(ChatPacketId, body.ToArray());
+            }
+        }
+
+        public void SendSkill(int skillId)
+        {
+            if (_assignedId < 0)
+            {
+                return;
+            }
+
+            using (MemoryStream body = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(body))
+            {
+                writer.Write((int)PacketType.SKILL);
+                writer.Write(skillId);
+                writer.Flush();
+                SendReliable((int)PacketType.SKILL, body.ToArray());
+            }
+        }
+
+        public void SendColor(byte r, byte g, byte b)
+        {
+            if (_assignedId < 0)
+            {
+                return;
+            }
+
+            using (MemoryStream body = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(body))
+            {
+                writer.Write((int)PacketType.COLOR);
+                writer.Write(r);
+                writer.Write(g);
+                writer.Write(b);
+                writer.Flush();
+                SendReliable((int)PacketType.COLOR, body.ToArray());
+            }
+        }
+
+        public void SendDisconnect()
+        {
+            if (_assignedId < 0)
+            {
+                return;
+            }
+
+            using (MemoryStream body = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(body))
+            {
+                writer.Write((int)PacketType.DISCONNECT);
+                writer.Write(_assignedId);
+                writer.Flush();
+                SendReliable((int)PacketType.DISCONNECT, body.ToArray());
+            }
+        }
+
+        public void SendSyncAbility(int abilityId)
+        {
+            if (_assignedId < 0)
+            {
+                return;
+            }
+
+            using (MemoryStream body = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(body))
+            {
+                writer.Write((int)PacketType.SYNC_ABILITY);
+                writer.Write(abilityId);
+                writer.Flush();
+                SendReliable((int)PacketType.SYNC_ABILITY, body.ToArray());
+            }
+        }
+
+        public void SendSyncLever(int v0, int v1, int v2, int v3, int v4)
+        {
+            if (_assignedId < 0)
+            {
+                return;
+            }
+
+            using (MemoryStream body = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(body))
+            {
+                writer.Write((int)PacketType.SYNC_LEVER);
+                writer.Write(v0);
+                writer.Write(v1);
+                writer.Write(v2);
+                writer.Write(v3);
+                writer.Write(v4);
+                writer.Flush();
+                SendReliable((int)PacketType.SYNC_LEVER, body.ToArray());
+            }
+        }
+
+        public void SendSyncDoor(int v0, int v1, int v2, int v3)
+        {
+            if (_assignedId < 0)
+            {
+                return;
+            }
+
+            using (MemoryStream body = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(body))
+            {
+                writer.Write((int)PacketType.SYNC_DOOR);
+                writer.Write(v0);
+                writer.Write(v1);
+                writer.Write(v2);
+                writer.Write(v3);
+                writer.Flush();
+                SendReliable((int)PacketType.SYNC_DOOR, body.ToArray());
+            }
+        }
+
+        public void SendSyncWorldEvent(int v0, int v1, int v2, int v3, int v4)
+        {
+            if (_assignedId < 0)
+            {
+                return;
+            }
+
+            using (MemoryStream body = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(body))
+            {
+                writer.Write((int)PacketType.SYNC_WORLDEVENT);
+                writer.Write(v0);
+                writer.Write(v1);
+                writer.Write(v2);
+                writer.Write(v3);
+                writer.Write(v4);
+                writer.Flush();
+                SendReliable((int)PacketType.SYNC_WORLDEVENT, body.ToArray());
+            }
+        }
+
+        public void SendDummyAction(int action)
+        {
+            if (_assignedId < 0)
+            {
+                return;
+            }
+
+            using (MemoryStream body = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(body))
+            {
+                writer.Write((int)PacketType.DUMMY_ACTION);
+                writer.Write(action);
+                writer.Flush();
+                SendReliable((int)PacketType.DUMMY_ACTION, body.ToArray());
+            }
+        }
+
+        public void SendDummyAction(int action, int abilityId)
+        {
+            if (_assignedId < 0)
+            {
+                return;
+            }
+
+            using (MemoryStream body = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(body))
+            {
+                writer.Write((int)PacketType.DUMMY_ACTION);
+                writer.Write(action);
+                writer.Write(abilityId);
+                writer.Flush();
+                SendReliable((int)PacketType.DUMMY_ACTION, body.ToArray());
             }
         }
 
@@ -197,7 +408,7 @@ namespace OriCoopBepInEx.Networking
                 return;
             }
 
-            _nickname = newNick.Trim();
+            _nickname = StripBrackets(newNick.Trim());
             if (_assignedId >= 0)
             {
                 using (MemoryStream body = new MemoryStream())
@@ -217,14 +428,23 @@ namespace OriCoopBepInEx.Networking
             {
                 try
                 {
+                    long nowTicks = DateTime.UtcNow.Ticks;
                     if (_assignedId < 0)
                     {
-                        SendHello();
+                        // Hello com intervalo: o timeout curto (250 ms) serve
+                        // a bomba de retry, nao pode virar spam de handshake.
+                        if (nowTicks - _lastHelloSentTicks >= HelloIntervalTicks)
+                        {
+                            _lastHelloSentTicks = nowTicks;
+                            SendHello();
+                        }
                     }
-                    else if (DateTime.UtcNow.Ticks - _lastPingSentTicks >= PingIntervalTicks)
+                    else if (nowTicks - _lastPingSentTicks >= PingIntervalTicks)
                     {
                         SendPing();
                     }
+
+                    PumpRetries();
 
                     byte[] datagram = _client.Receive(ref endpoint);
                     ReadServerPacket(datagram);
@@ -258,6 +478,7 @@ namespace OriCoopBepInEx.Networking
             {
                 writer.Write(sentTicks);
                 writer.Flush();
+                // Ping e unreliable (D-09): nunca gera pendencia.
                 SendSystem(NetProtocol.MsgPing, body.ToArray(), 0);
             }
         }
@@ -285,6 +506,99 @@ namespace OriCoopBepInEx.Networking
             SendEnvelope(_assignedId, _sessionToken, packetId, seq, flags, body);
         }
 
+        private void SendReliable(int packetId, byte[] body)
+        {
+            uint seq = NextSeq();
+            byte[] datagram = BuildEnvelope(_assignedId, _sessionToken, packetId, seq, NetProtocol.FlagReliable, body);
+            lock (_sync)
+            {
+                PendingSend pending = new PendingSend();
+                pending.Seq = seq;
+                pending.Datagram = datagram;
+                pending.Attempts = 0;
+                pending.NextRetryTicks = DateTime.UtcNow.Ticks + NetProtocol.AckRetryMs * TimeSpan.TicksPerMillisecond;
+                _pending[seq] = pending;
+            }
+            SendRaw(datagram);
+        }
+
+        private void SendSysAck(uint ackedSeq)
+        {
+            using (MemoryStream body = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(body))
+            {
+                writer.Write(ackedSeq);
+                writer.Flush();
+                // SysAck nunca gera pendencia.
+                SendEnvelope(_assignedId, _sessionToken, NetProtocol.MsgAck, NextSeq(), 0, body.ToArray());
+            }
+        }
+
+        private void Complete(uint ackedSeq)
+        {
+            lock (_sync)
+            {
+                _pending.Remove(ackedSeq);
+            }
+        }
+
+        private void PumpRetries()
+        {
+            long nowTicks = DateTime.UtcNow.Ticks;
+            List<PendingSend> due = null;
+            List<uint> expired = null;
+            lock (_sync)
+            {
+                foreach (KeyValuePair<uint, PendingSend> pair in _pending)
+                {
+                    PendingSend pending = pair.Value;
+                    if (nowTicks < pending.NextRetryTicks)
+                    {
+                        continue;
+                    }
+                    if (pending.Attempts >= NetProtocol.MaxRetries)
+                    {
+                        if (expired == null)
+                        {
+                            expired = new List<uint>();
+                        }
+                        expired.Add(pair.Key);
+                    }
+                    else
+                    {
+                        pending.Attempts++;
+                        pending.NextRetryTicks = nowTicks + NetProtocol.AckRetryMs * TimeSpan.TicksPerMillisecond;
+                        if (due == null)
+                        {
+                            due = new List<PendingSend>();
+                        }
+                        due.Add(pending);
+                    }
+                }
+                if (expired != null)
+                {
+                    for (int i = 0; i < expired.Count; i++)
+                    {
+                        _pending.Remove(expired[i]);
+                    }
+                }
+            }
+            if (due != null)
+            {
+                for (int i = 0; i < due.Count; i++)
+                {
+                    try
+                    {
+                        SendRaw(due[i].Datagram);
+                    }
+                    catch (Exception)
+                    {
+                        // Socket fechando no Dispose: pendencias morrem junto.
+                    }
+                }
+            }
+        }
+
         private void SendSystemPreHandshake(int packetId, byte[] body)
         {
             uint seq = NextSeq();
@@ -306,6 +620,11 @@ namespace OriCoopBepInEx.Networking
 
         private void SendEnvelope(int clientId, uint token, int packetId, uint seq, byte flags, byte[] body)
         {
+            SendRaw(BuildEnvelope(clientId, token, packetId, seq, flags, body));
+        }
+
+        private static byte[] BuildEnvelope(int clientId, uint token, int packetId, uint seq, byte flags, byte[] body)
+        {
             using (MemoryStream stream = new MemoryStream())
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
@@ -322,7 +641,7 @@ namespace OriCoopBepInEx.Networking
                     writer.Write(body);
                 }
                 writer.Flush();
-                SendRaw(stream.ToArray());
+                return stream.ToArray();
             }
         }
 
@@ -342,14 +661,30 @@ namespace OriCoopBepInEx.Networking
             {
                 ushort magic = reader.ReadUInt16();
                 byte version = reader.ReadByte();
-                reader.ReadByte(); // flags
+                byte flags = reader.ReadByte();
                 uint seq = reader.ReadUInt32();
                 int headerClientId = reader.ReadInt32();
                 reader.ReadUInt32(); // token (servidor nao o ecoa)
                 int packetId = reader.ReadInt32();
-                reader.ReadUInt32(); // ackSeq
+                uint ackSeq = reader.ReadUInt32();
                 if (magic != NetProtocol.Magic || version != NetProtocol.Version)
                 {
+                    return;
+                }
+                // Todo Reliable recebido gera SysAck imediato (D-10), antes
+                // do dispatch; ACK piggybacked vale como SysAck.
+                if ((flags & NetProtocol.FlagReliable) != 0)
+                {
+                    SendSysAck(seq);
+                }
+                if ((flags & NetProtocol.FlagAckPresent) != 0)
+                {
+                    Complete(ackSeq);
+                }
+                if (packetId == NetProtocol.MsgAck)
+                {
+                    uint ackedSeq = reader.ReadUInt32();
+                    Complete(ackedSeq);
                     return;
                 }
                 if (packetId == NetProtocol.MsgWelcome)
@@ -359,6 +694,14 @@ namespace OriCoopBepInEx.Networking
                     reader.ReadByte(); // serverVer
                     _assignedId = assignedId;
                     _sessionToken = token;
+                    // Nova sessao: baselines e pendencias antigas morrem aqui;
+                    // o re-sync pos-Confirm (CONFIG + snapshots que o servidor
+                    // reenvia) e aplicado pelos handlers abaixo.
+                    _lastRelaySeq.Clear();
+                    lock (_sync)
+                    {
+                        _pending.Clear();
+                    }
                     SendConfirm();
                     Action<string, int> handler = IdentityAssigned;
                     if (handler != null)
@@ -385,6 +728,10 @@ namespace OriCoopBepInEx.Networking
                     // Sessao morta no servidor (restart/timeout): volta ao handshake (D-07).
                     _assignedId = -1;
                     _sessionToken = 0;
+                    lock (_sync)
+                    {
+                        _pending.Clear();
+                    }
                     return;
                 }
                 if (packetId == (int)PacketType.PLAYER_STATE)
@@ -402,9 +749,9 @@ namespace OriCoopBepInEx.Networking
                     snapshot.PlayerId = headerClientId;
                     snapshot.Position = new Vector3Data(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                     snapshot.Animation.State = (ActionVisualState)reader.ReadByte();
-                    byte flags = reader.ReadByte();
-                    snapshot.Animation.FacingLeft = (flags & 1) != 0;
-                    snapshot.Animation.IsGrounded = (flags & 2) != 0;
+                    byte stateFlags = reader.ReadByte();
+                    snapshot.Animation.FacingLeft = (stateFlags & 1) != 0;
+                    snapshot.Animation.IsGrounded = (stateFlags & 2) != 0;
                     snapshot.Animation.AnimNameHash = unchecked((uint)reader.ReadInt32());
                     snapshot.Velocity = new Vector2Data(reader.ReadSingle(), reader.ReadSingle());
                     snapshot.Nick = ReadLegacyString(reader);
@@ -431,10 +778,10 @@ namespace OriCoopBepInEx.Networking
                     }
                 }
 
-                else if (packetId == ChatPacket)
+                else if (packetId == ChatPacketId)
                 {
                     int marker = reader.ReadInt32();
-                    if (marker != ChatPacket)
+                    if (marker != ChatPacketId)
                     {
                         throw new InvalidDataException("Chat sem marcador.");
                     }
@@ -467,44 +814,98 @@ namespace OriCoopBepInEx.Networking
                     {
                         throw new InvalidDataException("Config sem marcador.");
                     }
-                    try
+                    // Leitura tolerante: confere bytes restantes antes de cada
+                    // bool; o que faltar vira false. Ordem canonica:
+                    // AllowTeleport, ShareAbilities, ShareStoryOnly,
+                    // ShareWorldEvents, ShareDoorsAndLevers, ShowNicknames,
+                    // ClientColors, EntitySync.
+                    bool[] configFlags = new bool[8];
+                    for (int i = 0; i < 8; i++)
                     {
-                        bool tp = reader.ReadBoolean();
-                        bool ab = reader.ReadBoolean();
-                        bool story = reader.ReadBoolean();
-                        bool world = reader.ReadBoolean();
-                        bool doors = reader.ReadBoolean();
-                        bool names = reader.ReadBoolean();
-                        ConfigSyncHandler handler = ConfigSyncReceived;
-                        if (handler != null)
+                        if (reader.BaseStream.Length - reader.BaseStream.Position >= 1)
                         {
-                            handler(tp, ab, story, world, doors, names);
+                            configFlags[i] = reader.ReadBoolean();
+                        }
+                        else
+                        {
+                            configFlags[i] = false;
                         }
                     }
-                    catch (EndOfStreamException) { }
+                    ConfigSyncHandler handler = ConfigSyncReceived;
+                    if (handler != null)
+                    {
+                        handler(configFlags[0], configFlags[1], configFlags[2], configFlags[3], configFlags[4], configFlags[5], configFlags[6], configFlags[7]);
+                    }
+                    Action<bool> entityHandler = EntitySyncChanged;
+                    if (entityHandler != null)
+                    {
+                        entityHandler(configFlags[7]);
+                    }
                 }
-                else if (packetId == NetworkVariablePacket)
+                else if (packetId == (int)PacketType.SKILL)
                 {
-                    int marker = reader.ReadInt32();
-                    if (marker != NetworkVariablePacket)
-                    {
-                        throw new InvalidDataException("NetVar sem marcador.");
-                    }
-                    string name = ReadLegacyString(reader);
-                    string value = ReadLegacyString(reader);
-                    if (string.Equals(name, "ES", StringComparison.OrdinalIgnoreCase))
-                    {
-                        bool entitySync;
-                        if (bool.TryParse(value, out entitySync))
-                        {
-                            Action<bool> handler = EntitySyncChanged;
-                            if (handler != null)
-                            {
-                                handler(entitySync);
-                            }
-                        }
-                    }
+                    // Relay do servidor: marcador 7 + fromId + skill. Sem
+                    // consumidor nesta build: valida o framing e descarta
+                    // (o SysAck ja foi enviado acima).
+                    ExpectMarker(reader, (int)PacketType.SKILL, "SKILL");
+                    ExpectRemaining(reader, 8, "SKILL");
+                    reader.ReadBytes(8);
                 }
+                else if (packetId == (int)PacketType.COLOR)
+                {
+                    // Unicast inicial (marcador 6 + 3 bytes RGB) ou eco
+                    // (marcador 6 + fromId + 3 bytes). Sem consumidor:
+                    // valida e descarta.
+                    ExpectMarker(reader, (int)PacketType.COLOR, "COLOR");
+                    ExpectRemaining(reader, 3, "COLOR");
+                    long left = reader.BaseStream.Length - reader.BaseStream.Position;
+                    reader.ReadBytes((int)left);
+                }
+                else if (packetId == (int)PacketType.SYNC_ABILITY)
+                {
+                    ExpectMarker(reader, (int)PacketType.SYNC_ABILITY, "SYNC_ABILITY");
+                    ExpectRemaining(reader, 8, "SYNC_ABILITY");
+                    reader.ReadBytes(8);
+                }
+                else if (packetId == (int)PacketType.SYNC_LEVER)
+                {
+                    ExpectMarker(reader, (int)PacketType.SYNC_LEVER, "SYNC_LEVER");
+                    ExpectRemaining(reader, 24, "SYNC_LEVER");
+                    reader.ReadBytes(24);
+                }
+                else if (packetId == (int)PacketType.SYNC_DOOR)
+                {
+                    ExpectMarker(reader, (int)PacketType.SYNC_DOOR, "SYNC_DOOR");
+                    ExpectRemaining(reader, 20, "SYNC_DOOR");
+                    reader.ReadBytes(20);
+                }
+                else if (packetId == (int)PacketType.SYNC_WORLDEVENT)
+                {
+                    ExpectMarker(reader, (int)PacketType.SYNC_WORLDEVENT, "SYNC_WORLDEVENT");
+                    ExpectRemaining(reader, 24, "SYNC_WORLDEVENT");
+                    reader.ReadBytes(24);
+                }
+                else if (packetId == (int)PacketType.SYNC_BREAKABLE)
+                {
+                    ExpectMarker(reader, (int)PacketType.SYNC_BREAKABLE, "SYNC_BREAKABLE");
+                }
+            }
+        }
+
+        private static void ExpectMarker(BinaryReader reader, int packetId, string name)
+        {
+            int marker = reader.ReadInt32();
+            if (marker != packetId)
+            {
+                throw new InvalidDataException(name + " sem marcador.");
+            }
+        }
+
+        private static void ExpectRemaining(BinaryReader reader, int count, string name)
+        {
+            if (reader.BaseStream.Length - reader.BaseStream.Position < count)
+            {
+                throw new InvalidDataException(name + " truncado.");
             }
         }
 
@@ -535,6 +936,11 @@ namespace OriCoopBepInEx.Networking
             }
         }
 
+        private static string StripBrackets(string value)
+        {
+            return (value ?? string.Empty).Replace("<", string.Empty).Replace(">", string.Empty);
+        }
+
         private static void WriteLegacyString(BinaryWriter writer, string value)
         {
             if (string.IsNullOrEmpty(value))
@@ -559,10 +965,27 @@ namespace OriCoopBepInEx.Networking
 
         public void Dispose()
         {
+            // Best-effort: avisa a saida antes de fechar o socket.
+            try
+            {
+                if (_assignedId >= 0)
+                {
+                    SendDisconnect();
+                }
+            }
+            catch (Exception)
+            {
+            }
             lock (_sync)
             {
                 _running = false;
-                _client.Close();
+                try
+                {
+                    _client.Close();
+                }
+                catch (Exception)
+                {
+                }
             }
 
             if (_receiveThread != null && _receiveThread.IsAlive)

@@ -379,12 +379,12 @@ namespace OriCoopBepInEx.Plugin
             }
         }
 
-        private void OnConfigSyncReceived(bool tp, bool ab, bool story, bool world, bool doors, bool names)
+        private void OnConfigSyncReceived(bool tp, bool ab, bool story, bool world, bool doors, bool names, bool clientColors, bool entitySync)
         {
             bool changed = (tp != _serverAllowTeleport);
             _serverAllowTeleport = tp;
-            Logger.LogInfo(string.Format("Config do servidor: tp={0} abilities={1} world={2} doors={3} names={4}",
-                tp ? "on" : "off", ab ? "on" : "off", world ? "on" : "off", doors ? "on" : "off", names ? "on" : "off"));
+            Logger.LogInfo(string.Format("Config do servidor: tp={0} abilities={1} story={2} world={3} doors={4} names={5} colors={6} entity={7}",
+                tp ? "on" : "off", ab ? "on" : "off", story ? "on" : "off", world ? "on" : "off", doors ? "on" : "off", names ? "on" : "off", clientColors ? "on" : "off", entitySync ? "on" : "off"));
             if (changed && !tp)
             {
                 lock (_mainThreadActions)
