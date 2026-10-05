@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using OriCoopDedicatedServer.Net.Diagnostics;
@@ -49,8 +50,25 @@ namespace OriCoopDedicatedServer.Net.Game
         private readonly object _sync = new object();
 
         public ServerBoot(int port, int maxPlayers)
-            : this(port, maxPlayers, new FileConsoleLogger("net2-server.log"), null)
+            : this(port, maxPlayers, new FileConsoleLogger(DefaultLogPath()), null)
         {
+        }
+
+        /// <summary>
+        /// Log em `Logs/` ao lado do diretorio de trabalho (D-16): console +
+        /// arquivo com niveis. O diretorio e criado aqui para o append nunca
+        /// falhar por pasta ausente.
+        /// </summary>
+        public static string DefaultLogPath()
+        {
+            try
+            {
+                Directory.CreateDirectory("Logs");
+            }
+            catch (Exception)
+            {
+            }
+            return Path.Combine("Logs", "server.log");
         }
 
         public ServerBoot(int port, int maxPlayers, ILogger log, string? configPath)

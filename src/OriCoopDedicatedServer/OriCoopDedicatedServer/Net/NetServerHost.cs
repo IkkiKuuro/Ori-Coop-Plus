@@ -7,7 +7,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using OriCoop;
-using OriCoopDedicatedServer.Core.CommandSystem;
 using OriCoopDedicatedServer.Net.Diagnostics;
 using OriCoopDedicatedServer.Net.Game;
 using OriCoopDedicatedServer.Net.Reliability;
@@ -449,30 +448,21 @@ namespace OriCoopDedicatedServer.Net
 
         private string BuildHelpText()
         {
-            var names = new List<string>();
-            try
+            // Lista estatica dos comandos do novo core (cutover 02-04: sem
+            // dependencia do Core antigo). Espelha os nomes primarios
+            // registrados por OriCommands.RegisterAll.
+            string[] names = new string[]
             {
-                foreach (ConsoleCommand cmd in CommandProcessor.AllCommands)
-                {
-                    if (cmd != null && !string.IsNullOrEmpty(cmd.Command))
-                    {
-                        names.Add("/" + cmd.Command);
-                    }
-                }
-            }
-            catch (Exception)
-            {
-            }
-            if (names.Count == 0)
-            {
-                names.Add("/coop");
-                names.Add("/tp");
-                names.Add("/dummy");
-                names.Add("/clientcolors");
-                names.Add("/entitysync");
-            }
+                "/coop",
+                "/tp",
+                "/dummy",
+                "/clientcolors",
+                "/entitysync",
+                "/help",
+                "/stop",
+            };
             var sb = new StringBuilder("Commands: ");
-            for (int i = 0; i < names.Count; i++)
+            for (int i = 0; i < names.Length; i++)
             {
                 if (i > 0)
                 {

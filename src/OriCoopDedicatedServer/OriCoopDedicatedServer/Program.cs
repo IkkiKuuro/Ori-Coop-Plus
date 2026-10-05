@@ -1,19 +1,22 @@
 using System;
-using OriCoopDedicatedServer.Core;
-using OriCoopDedicatedServer.Core.CommandSystem;
-using OriCoopDedicatedServer.Core.Network;
+using OriCoopDedicatedServer.Net.Diagnostics;
+using OriCoopDedicatedServer.Net.Game;
+using OriCoopDedicatedServer.Net.Game.Commands;
 
 namespace OriCoopDedicatedServer;
 
 internal static class Program
 {
+	// Cutover 02-04 (D-14, quebra one-way ja aprovada): o novo core e o unico
+	// path — nao ha mais branch --net2 nem path do Core antigo. A flag --net2
+	// ainda e aceita como no-op para nao quebrar scripts/smoke existentes.
+	// O Core antigo permanece no disco como referencia, fora do build.
 	private static void Main(string[] args)
 	{
 		try { Console.OutputEncoding = System.Text.Encoding.UTF8; } catch { }
 		int maxplayers = 4;
 		int port = 7777;
 		bool autoStart = false;
-		bool net2 = false;
 		int positionalArgument = 0;
 
 		if (args != null && args.Length > 0)
@@ -24,7 +27,7 @@ internal static class Program
 				string arg = args[i].ToLower();
 				if (arg == "--net2" || arg == "-net2" || arg == "/net2")
 				{
-					net2 = true;
+					// No-op: novo core e o default desde o cutover.
 					continue;
 				}
 				if (arg == "--auto" || arg == "-auto" || arg == "/auto")
@@ -55,51 +58,32 @@ internal static class Program
 			}
 		}
 
-		if (!autoStart && !net2)
+		if (!autoStart)
 		{
-			Logger.Info("SERVER", "ENTER MAX PLAYERS [DEFAULT 4 MAX 10] (Pressione ENTER para padrao 4)");
-			string line1 = Console.ReadLine();
+			Console.WriteLine("ENTER MAX PLAYERS [DEFAULT 4 MAX 10] (Pressione ENTER para padrao 4)");
+			string? line1 = Console.ReadLine();
 			if (!string.IsNullOrEmpty(line1) && int.TryParse(line1, out var result))
 			{
-				maxplayers = ((result > 10) ? 10 : ((result <= 0) ? 1 : result));
+				maxplayers = ClampMaxPlayers(result);
 			}
 
-			Logger.Info("SERVER", "ENTER SERVER PORT [DEFAULT 7777 MAX 65535] (Pressione ENTER para padrao 7777)");
-			string line2 = Console.ReadLine();
+			Console.WriteLine("ENTER SERVER PORT [DEFAULT 7777 MAX 65535] (Pressione ENTER para padrao 7777)");
+			string? line2 = Console.ReadLine();
 			if (!string.IsNullOrEmpty(line2) && int.TryParse(line2, out var result2))
 			{
-				port = ((result2 > 9999) ? 9999 : ((result2 <= 0) ? 7777 : result2));
+				port = NormalizePort(result2);
 			}
 		}
 
-		if (net2)
-		{
-			RunNet2Host(maxplayers, port);
-			return;
-		}
-
-		Server.Start(maxplayers, port);
-		Logger.Info("SERVER", "Use one of the IPv4 addresses above in the client's Network.Host setting.");
-		CommandProcessor.RegisterCommands();
-		new Game.OriCoopServerModule().OnEnable();
-		while (!Server.StopTheServer)
-		{
-			string cmds = Console.ReadLine();
-			if (!string.IsNullOrEmpty(cmds))
-			{
-				CommandProcessor.ProcessCommand(cmds);
-			}
-			else
-			{
-				System.Threading.Thread.Sleep(100);
-			}
-		}
+		RunHost(maxplayers, port);
 	}
 
-	private static void RunNet2Host(int maxplayers, int port)
+	private static void RunHost(int maxplayers, int port)
 	{
-		var boot = new Net.Game.ServerBoot(port, maxplayers);
+		var boot = new ServerBoot(port, maxplayers);
 		var log = boot.Log;
+		var registry = new CommandRegistry(boot);
+		OriCommands.RegisterAll(registry);
 		using (var cts = new System.Threading.CancellationTokenSource())
 		{
 			System.Console.CancelKeyPress += (sender, e) =>
@@ -108,7 +92,10 @@ internal static class Program
 				try { cts.Cancel(); } catch { }
 			};
 			System.Threading.Tasks.Task runTask = boot.StartAsync(cts.Token);
-			log.Log(Net.Diagnostics.ServerLogLevel.Info, "NET2", "Digite stop para encerrar.");
+			log.Log(ServerLogLevel.Info, "SERVER", "Server started on " + port);
+			log.Log(ServerLogLevel.Info, "SERVER", "Ori Coop Plus Server Module CARREGADO");
+			log.Log(ServerLogLevel.Info, "SERVER", "Use one of the IPv4 addresses above in the client's Network.Host setting.");
+			log.Log(ServerLogLevel.Info, "SERVER", "Digite stop para encerrar.");
 			while (!cts.IsCancellationRequested)
 			{
 				var rawOpt = System.Console.ReadLine();
@@ -116,15 +103,32 @@ internal static class Program
 				{
 					// stdin fechado/redirecionado (ex. dotnet run em script):
 					// nao encerra; aguarda Ctrl+C ou morte do processo.
-					log.Log(Net.Diagnostics.ServerLogLevel.Debug, "NET2", "stdin indisponivel; aguardando Ctrl+C ou encerramento externo.");
+					log.Log(ServerLogLevel.Debug, "SERVER", "stdin indisponivel; aguardando Ctrl+C ou encerramento externo.");
 					try { cts.Token.WaitHandle.WaitOne(); } catch { }
 					break;
 				}
-				string cmd = rawOpt.Trim().ToLowerInvariant();
-				if (cmd == "stop" || cmd == "quit" || cmd == "exit")
+				string line = rawOpt.Trim();
+				if (line.Length == 0)
 				{
+					continue;
+				}
+				string lowered = line.ToLowerInvariant();
+				if (lowered == "stop" || lowered == "quit" || lowered == "exit" || lowered == "sair")
+				{
+					string stopResponse;
+					registry.ExecuteLine("stop", null, out stopResponse);
+					if (!string.IsNullOrEmpty(stopResponse))
+					{
+						log.Log(ServerLogLevel.Info, "CMD", stopResponse);
+					}
 					try { boot.RequestStop(); } catch { }
 					break;
+				}
+				string response;
+				bool ok = registry.ExecuteLine(line, null, out response);
+				if (!string.IsNullOrEmpty(response))
+				{
+					log.Log(ok ? ServerLogLevel.Info : ServerLogLevel.Warning, "CMD", response);
 				}
 			}
 			try { boot.StopAsync().GetAwaiter().GetResult(); }
