@@ -19,7 +19,8 @@ namespace OriCoop
         SYNC_WORLDEVENT = 14,
         TELEPORT_REQUEST = 15,
         CONFIG_SYNC = 16,
-        DUMMY_ACTION = 17
+        DUMMY_ACTION = 17,
+        PLAYER_STATE = 18
     }
 
     public enum CoopSkillType

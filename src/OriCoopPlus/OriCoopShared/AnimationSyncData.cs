@@ -51,5 +51,29 @@ namespace OriCoop
             }
             return hash;
         }
+
+        public static ActionVisualState DeriveState(float speedX, float speedY, bool isGrounded)
+        {
+            if (!isGrounded)
+            {
+                if (speedY < -1.0f)
+                {
+                    return ActionVisualState.Falling;
+                }
+                if (speedY > 1.0f)
+                {
+                    return ActionVisualState.Jump;
+                }
+                return ActionVisualState.Falling;
+            }
+
+            float horizontalSpeed = speedX >= 0f ? speedX : -speedX;
+            if (horizontalSpeed > 0.4f)
+            {
+                return ActionVisualState.Running;
+            }
+
+            return ActionVisualState.Idle;
+        }
     }
 }
