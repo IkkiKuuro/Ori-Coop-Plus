@@ -23,6 +23,7 @@ ser alterados com extremo cuidado:
 | 16 | `CONFIG_SYNC` | configuracao do servidor |
 | 17 | `DUMMY_ACTION` | acao do bot de teste |
 | 18 | `PLAYER_STATE` | estado unificado posicao+animacao (substitui `POSITION`+`ANIM` fragmentados) |
+| 19 | `PLAYER_EVENT` | evento do personagem (piloto: Spirit Flame; unreliable sequenciado) |
 
 `CoopSkillType` atualmente diferencia `NONE`, `Spirit` e `Stomp`.
 
@@ -135,14 +136,15 @@ datagrama original acontece a cada 250 ms ate 3 tentativas (`AckRetryMs` /
 `MaxRetries` em `NetProtocol.cs`). Sem ACK apos as 3 tentativas o servidor
 loga `Warning` com sessao e `seq` e desiste sem derrubar a sessao. ACK
 piggybacked (`AckPresent` `0x02` + `ackSeq` no header) vale como `SysAck`.
-`PLAYER_STATE` 18 e `Ping` 104 nunca geram pendencia (unreliable, sem retry).
+`PLAYER_STATE` 18, `PLAYER_EVENT` 19 e `Ping` 104 nunca geram pendencia (unreliable, sem retry).
 
 Espelho no cliente (cutover 02-04, `NetworkService.cs`): o cliente responde
 `SysAck` 103 imediato a todo datagrama `Reliable` (inclui `CONFIG_SYNC` e
 chat do servidor) e reenvia os proprios criticos (chat, `TELEPORT_REQUEST`
 15, `SKILL` 7, `COLOR` 6, `DISCONNECT` 4, `SYNC_*`) a cada 250 ms ate 3
 tentativas; `PLAYER_STATE` vai on-change + heartbeat 2,5 Hz sem retry, com
-drop-old wrap-safe por remetente; `Reject` 106 reseta para `-1` (re-handshake)
+drop-old wrap-safe por remetente; `PLAYER_EVENT` 19 vai por disparo (cada tiro
+envia na hora, sem throttle no piloto), com drop-old wrap-safe por remetente; `Reject` 106 reseta para `-1` (re-handshake)
 e limpa baselines/pendencias, de modo que o re-sync pos-`Confirm` (`CONFIG`
 + snapshots correntes que o servidor reenvia) e sempre aplicado. Heartbeat e
 ping rodam na thread de rede com timeout curto — nunca em `FixedUpdate` —
@@ -237,6 +239,34 @@ reconstrucao nem fusao.
 sincronia de anims (ver tabela de removidos); so `PLAYER_STATE` (18) trafega
 posicao+anim. IDs 1 e 2 nunca serão reutilizados. Cliente e servidor sempre
 do mesmo build.
+
+## Pacote de evento do personagem PLAYER_EVENT (19)
+
+`PLAYER_EVENT` carrega UM disparo do jogador local (piloto: Spirit Flame),
+nesta ordem congelada (37 bytes, `PlayerEventProtocol.cs` e o contrato
+canonico), sempre precedido do marcador `int 19`:
+
+| Offset | Tamanho | Campo | Descricao |
+| ---: | ---: | --- | --- |
+| 0 | 4 | `marker` | `int 19` (convecao legado-identica) |
+| 4 | 1 | `kind` | `PlayerEventKind` como byte opaco (`SpiritFlame = 1`; `0` reservado) |
+| 5 | 12 | `direction` | `float dirX, dirY, dirZ` (piloto: facing `+-X`, resto `0`) |
+| 17 | 12 | `origin` | `float originX, originY, originZ` (posicao do Sein no disparo) |
+| 29 | 8 | `timestamp` | `long` com `DateTime.UtcNow.Ticks` do disparo |
+
+A identidade do remetente viaja no `clientId` do header do envelope (nunca
+no corpo) e o relay reemite os bytes originais sem reconstrucao nem fusao —
+sem carimbo de `fromId` (diferente dos relays confiaveis `SKILL`/`SYNC_*`).
+Classe unreliable sequenciada (mesma do `PLAYER_STATE` 18, D-09): flags `0`,
+sem ACK, sem retry, fora da lista critica; drop-old wrap-safe por remetente
+nos dois lados. So o jogador local publica (filtro
+`m_sein == Game.Characters.Sein` no patch); o receptor remoto nunca
+republica (sem eco) e evento de `kind` desconhecido mantem a ultima anim
+valida (fail-closed, sem fallback para Idle).
+
+> Reproducao visual remota (piloto: clipe de ataque no puppet) — a confirmar
+> em run com 2 clientes: linha `[EVENT] SpiritFlame detected` so no shooter,
+> clipe no puppet remoto, nenhuma linha no remoto.
 
 ## Fragmentacao POSITION/ANIM (causa raiz do bug #2 — REMOVIDA)
 
