@@ -488,9 +488,13 @@ nao levar o piloto para o jogo.
 
 Pre-requisitos: par cliente+servidor do **mesmo build** implantado
 (`OriCoopBepInEx.dll` em `<ORI_DIR>\BepInEx\plugins\`, servidor em
-`<ORI_DIR>\Server\`), porta padrao, save controlavel nos dois clientes,
-`Diagnostics/AnimVerbose=true` em `com.ikkikuuro.oricoop.cfg` nos dois
-(desligar depois da rodada).
+`<ORI_DIR>\Server\`), porta padrao, save controlavel nos dois clientes.
+Desde o gap-closure 03-04 as linhas `[EVENT] fase=enviado/recebido/
+aplicado` e os contadores `EvRecv/EvApplied/EvDropped` movem-se com
+config padrao (sem `AnimVerbose`); o toggle verbose in-game volta a
+dirigir o caminho verboso ANIM/EVENT. `Diagnostics/AnimVerbose=true`
+so e necessario para os logs `[ANIM]` de transicao e os
+`aplicado=parcial` de tuning.
 
 1. **C1 — A atira, B ve:** com A e B lado a lado, A dispara Spirit Flame;
    no puppet de A em B confirmar clipe de ataque + particula do disparo +
