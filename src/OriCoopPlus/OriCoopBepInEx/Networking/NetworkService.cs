@@ -96,7 +96,10 @@ namespace OriCoopBepInEx.Networking
             }
 
             _client = new UdpClient(AddressFamily.InterNetwork);
-            _client.Client.ReceiveTimeout = 250;
+            // Timeout curto: o loop precisa girar rapido (~50 Hz) para que
+            // FlushSnapshot (envio) nao fique represado atras do Receive
+            // bloqueante; 250 ms aqui virava ate 250 ms de atraso no envio.
+            _client.Client.ReceiveTimeout = 20;
             try
             {
                 // Ignora ICMP Port Unreachable (ex.: servidor reiniciado) em

@@ -16,9 +16,11 @@ namespace OriCoopBepInEx.Client
 
         private Vector3 _targetPosition;
         private Vector3 _velocity;
+        private float _lastSnapshotTime;
         private string _lastAnimName;
-        private const float InterpolationSmoothing = 18f;
+        private const float InterpolationSmoothing = 24f;
         private const float ConfirmDelaySec = 0.15f;
+        private const float MaxExtrapolationSec = 0.25f;
 
         private ActionVisualState _confirmedState = ActionVisualState.Idle;
         private ActionVisualState _pendingState = ActionVisualState.Idle;
@@ -39,6 +41,7 @@ namespace OriCoopBepInEx.Client
             _spriteMirror = GetComponentInChildren<CharacterSpriteMirror>();
 
             _targetPosition = transform.position;
+            _lastSnapshotTime = Time.time;
 
             if (_nameTag == null)
             {
@@ -74,6 +77,7 @@ namespace OriCoopBepInEx.Client
 
             _targetPosition = position;
             _velocity = velocity;
+            _lastSnapshotTime = Time.time;
 
             if (_spriteMirror != null)
             {
@@ -96,6 +100,7 @@ namespace OriCoopBepInEx.Client
 
             _targetPosition = position;
             _velocity = velocity;
+            _lastSnapshotTime = Time.time;
 
             if (_spriteMirror != null)
             {
@@ -273,16 +278,26 @@ namespace OriCoopBepInEx.Client
         private void Update()
         {
             float dt = Time.deltaTime;
+            // Extrapola o alvo pela velocidade real do snapshot (D-06 fase 1):
+            // entre dois pacotes o puppet segue andando em vez de esperar
+            // parado, o que corta o atraso percebido quase pela metade.
+            // Sem snapshot recente, segura no ultimo alvo (sem deriva).
+            Vector3 goal = _targetPosition;
+            float age = Time.time - _lastSnapshotTime;
+            if (age >= 0f && age <= MaxExtrapolationSec)
+            {
+                goal += _velocity * age;
+            }
             // Teleporte/logoff: se o alvo esta muito longe, teleporta em vez de
             // atravessar o mapa voando (que parecia "sumico" do jogador).
-            float dist = Vector3.Distance(transform.position, _targetPosition);
+            float dist = Vector3.Distance(transform.position, goal);
             if (dist > 15f)
             {
                 transform.position = _targetPosition;
             }
             else
             {
-                transform.position = Vector3.Lerp(transform.position, _targetPosition, dt * InterpolationSmoothing);
+                transform.position = Vector3.Lerp(transform.position, goal, dt * InterpolationSmoothing);
             }
         }
 
