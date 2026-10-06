@@ -472,6 +472,55 @@ padroes + `coop` => `Teleporte: ATIVADO` + `stop` limpo).
 `D:\SteamLibrary\...` nao existe nesta maquina — deploy feito so em `C:\...`.
 Validacao em jogo com 2 clientes reais ainda **a confirmar**.
 
+### Piloto Spirit Flame 03-03 — checklist de 2 clientes (2026-10-06, manual)
+
+Pre-gate automatizado (rodar antes do teste em jogo; exige `SMOKE_OK`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\src\OriCoopPlus\OriCoopBepInEx\build.ps1
+dotnet build .\src\OriCoopDedicatedServer\OriCoopDedicatedServer\OriCoopDedicatedServer.csproj --configuration Release
+dotnet run --project .\src\OriCoopDedicatedServer\SmokeProbe\SmokeProbe.csproj -- --port 7779 --test all
+```
+
+O `--test all` inclui o caso `player-event` (packet 19 byte-identico,
+sem eco, drop-old de seq repetida e antiga, sem `SysAck`); sem ele verde,
+nao levar o piloto para o jogo.
+
+Pre-requisitos: par cliente+servidor do **mesmo build** implantado
+(`OriCoopBepInEx.dll` em `<ORI_DIR>\BepInEx\plugins\`, servidor em
+`<ORI_DIR>\Server\`), porta padrao, save controlavel nos dois clientes,
+`Diagnostics/AnimVerbose=true` em `com.ikkikuuro.oricoop.cfg` nos dois
+(desligar depois da rodada).
+
+1. **C1 — A atira, B ve:** com A e B lado a lado, A dispara Spirit Flame;
+   no puppet de A em B confirmar clipe de ataque + particula do disparo +
+   som do tiro + projetil falso em linha reta, sem dano e sem colisao.
+2. **C2 — B atira, A ve:** repetir na direcao oposta (simetria do relay;
+   nenhum cliente e "host visual").
+3. **C3 — sem eco:** em cada `LogOutput.log`, linhas `[EVENT] fase=enviado`
+   aparecem so no atirador e `fase=recebido/aplicado` so no remoto; o
+   atirador nunca toca o proprio visual pelo evento (sem `aplicado` local).
+4. **C4 — spam sob movimento:** segurar disparo andando com os dois; o
+   puppet remoto mantem movimento suave (dominios de seq disjuntos —
+   rajada de tiro nao suprime snapshot) e o jogo nao engasga.
+5. **C5 — tipo desconhecido segura pose:** **a confirmar** — exige injetar
+   um packet 19 com kind fora do catalogo numa sessao viva (sem
+   ferramenta de injecao no repo); esperado: puppet mantem a ultima anim
+   (`aplicado=manteve-atual motivo=tipo-desconhecido`), nunca Idle
+   generico. O fail-closed esta revisado no codigo (`DispatchLocal` +
+   retorno null do clipe), mas sem prova em jogo.
+6. **C6 — desconexao/reconexao limpa:** sair com um cliente e voltar; o
+   puppet some e respawna no lugar certo, eventos voltam a replicar sem
+   reiniciar o servidor.
+
+Campos de observacao D-12 (base para calibrar throttle futuro — anotar
+a cada rodada): estimativa de tiros/s no spam + leitura da linha
+`[OBSERVABILITY][NET-METRICS]` (`EvRecv/EvApplied/EvDropped`) e linhas
+`[EVENT]` do anel (`F9` ou `LogOutput.log`).
+
+Resultado da rodada: **a confirmar** — sem 2 clientes neste ambiente;
+rodar e anotar aqui data, bytes da DLL e pass/fail por check (C1–C6).
+
 1. **Compilacao:**
    - `OriCoopDedicatedServer.csproj` compilado com sucesso (.NET 8.0 Release).
    - `OriCoopBepInEx.dll` compilado via `build.ps1` com 23 arquivos de origem (Release, 53.760 bytes).
