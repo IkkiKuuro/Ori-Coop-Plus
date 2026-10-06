@@ -1,4 +1,5 @@
 using System;
+using OriCoopBepInEx.Events;
 
 namespace OriCoopBepInEx.Domain
 {
@@ -19,6 +20,7 @@ namespace OriCoopBepInEx.Domain
         event Action<string, int> IdentityAssigned;
         event Action<int> PlayerDisconnected;
         event ConfigSyncHandler ConfigSyncReceived;
+        event Action<int, SpiritFlameEventData> PlayerEventReceived;
 
         bool IsConnected { get; }
 
@@ -36,5 +38,6 @@ namespace OriCoopBepInEx.Domain
         void SendDummyAction(int action);
         void SendDummyAction(int action, int abilityId);
         void SendNicknameUpdate(string newNick);
+        void SendPlayerEvent(SpiritFlameEventData data);
     }
 }

@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Threading;
 using OriCoop;
 using OriCoopBepInEx.Domain;
+using OriCoopBepInEx.Events;
 using UnityEngine;
 
 namespace OriCoopBepInEx.Networking
@@ -83,6 +84,7 @@ namespace OriCoopBepInEx.Networking
         public event Action<string, int> IdentityAssigned;
         public event Action<int> PlayerDisconnected;
         public event ConfigSyncHandler ConfigSyncReceived;
+        public event Action<int, SpiritFlameEventData> PlayerEventReceived;
 
         public NetworkService(string host, int port, int playerId, string nickname)
         {
@@ -430,6 +432,34 @@ namespace OriCoopBepInEx.Networking
                 writer.Write(abilityId);
                 writer.Flush();
                 SendReliable((int)PacketType.DUMMY_ACTION, body.ToArray());
+            }
+        }
+
+        // Evento de personagem (fase 3, piloto Spirit Flame, D-09): corpo com
+        // marcador 19 + kind + direcao + origem + timestamp (37 bytes,
+        // PlayerEventProtocol), enviado unreliable com flags 0 — nunca
+        // SendReliable (retry de 250 ms represaria tiros visuais).
+        public void SendPlayerEvent(SpiritFlameEventData data)
+        {
+            if (_assignedId < 0)
+            {
+                return;
+            }
+
+            using (MemoryStream body = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(body))
+            {
+                writer.Write((int)PacketType.PLAYER_EVENT);
+                writer.Write(data.Kind);
+                writer.Write(data.Direction.X);
+                writer.Write(data.Direction.Y);
+                writer.Write(data.Direction.Z);
+                writer.Write(data.Origin.X);
+                writer.Write(data.Origin.Y);
+                writer.Write(data.Origin.Z);
+                writer.Write(data.TimestampTicks);
+                writer.Flush();
+                SendSystem((int)PacketType.PLAYER_EVENT, body.ToArray(), 0);
             }
         }
 
@@ -795,6 +825,34 @@ namespace OriCoopBepInEx.Networking
                     snapshot.Timestamp = DateTime.UtcNow.Ticks;
                     RaiseSnapshot(snapshot);
                 }
+                else if (packetId == (int)PacketType.PLAYER_EVENT)
+                {
+                    int marker = reader.ReadInt32();
+                    if (marker != (int)PacketType.PLAYER_EVENT)
+                    {
+                        throw new InvalidDataException("PLAYER_EVENT sem marcador 19.");
+                    }
+                    if (!IsNewerThanLast(headerClientId, seq))
+                    {
+                        return;
+                    }
+                    // Corpo fixo de 33 bytes apos o marcador: kind(1) +
+                    // direcao(12) + origem(12) + timestamp(8). Uma checagem
+                    // cobre todas as leituras (regra 4 do protocolo).
+                    ExpectRemaining(reader, 33, "PLAYER_EVENT");
+                    byte kind = reader.ReadByte();
+                    Vector3Data direction = new Vector3Data(
+                        reader.ReadSingle(),
+                        reader.ReadSingle(),
+                        reader.ReadSingle());
+                    Vector3Data origin = new Vector3Data(
+                        reader.ReadSingle(),
+                        reader.ReadSingle(),
+                        reader.ReadSingle());
+                    long timestamp = reader.ReadInt64();
+                    SpiritFlameEventData data = new SpiritFlameEventData(kind, direction, origin, timestamp);
+                    RaisePlayerEvent(headerClientId, data);
+                }
                 else if (packetId == (int)PacketType.TELEPORT_REQUEST)
                 {
                     int marker = reader.ReadInt32();
@@ -969,6 +1027,15 @@ namespace OriCoopBepInEx.Networking
             if (handler != null && snapshot.PlayerId != _assignedId)
             {
                 handler(snapshot);
+            }
+        }
+
+        private void RaisePlayerEvent(int senderId, SpiritFlameEventData data)
+        {
+            Action<int, SpiritFlameEventData> handler = PlayerEventReceived;
+            if (handler != null && senderId != _assignedId)
+            {
+                handler(senderId, data);
             }
         }
 

@@ -89,7 +89,8 @@ namespace OriCoopDedicatedServer.Net.Game
         /// <summary>
         /// Pacotes de jogo com handler dedicado nesta camada (chat -5 e
         /// DISCONNECT 4 continuam no host; PLAYER_STATE 18 entra por
-        /// HandlePlayerStateAsync).
+        /// HandlePlayerStateAsync; PLAYER_EVENT 19 entra por
+        /// HandlePlayerEventAsync).
         /// </summary>
         public static bool IsGamePacket(int packetId)
         {
@@ -102,7 +103,8 @@ namespace OriCoopDedicatedServer.Net.Game
                 || packetId == (int)PacketType.SKILL
                 || packetId == (int)PacketType.COLOR
                 || packetId == (int)PacketType.CONFIG_SYNC
-                || packetId == (int)PacketType.DUMMY_ACTION;
+                || packetId == (int)PacketType.DUMMY_ACTION
+                || packetId == (int)PacketType.PLAYER_EVENT;
         }
 
         // ---- ciclo de sessao (chamado pelo host) ----
@@ -180,6 +182,8 @@ namespace OriCoopDedicatedServer.Net.Game
                     return OnColorAsync(sender, payload, ct);
                 case (int)PacketType.DUMMY_ACTION:
                     return OnDummyActionAsync(sender, payload);
+                case (int)PacketType.PLAYER_EVENT:
+                    return HandlePlayerEventAsync(sender, seq, payload, originalDatagram, ct);
                 case (int)PacketType.CONFIG_SYNC:
                     _log.Log(ServerLogLevel.Debug, "GAME", "CONFIG_SYNC de " + sender.Id + " ignorado (servidor e autoridade)");
                     return Task.CompletedTask;
@@ -218,6 +222,37 @@ namespace OriCoopDedicatedServer.Net.Game
                     SpeedY = speedY,
                     ReceivedAt = DateTime.UtcNow,
                 };
+            }
+            if (!_relay.ShouldRelay(sender, seq))
+            {
+                return;
+            }
+            await _transport.RelayUnreliableAsync(originalDatagram, sender, ct).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Evento de personagem (fase 3, piloto Spirit Flame, D-09): valida o
+        /// corpo minimo de 37 bytes + marcador 19, aplica o gate unreliable
+        /// compartilhado (drop-old wrap-safe por remetente) e reemite os
+        /// bytes originais do datagrama sem reconstrucao — clientId + seq do
+        /// remetente preservados, sem carimbo de fromId (identidade viaja no
+        /// header do envelope, D-11). Dominio de sequencia separado e escopo
+        /// do plano 02; no piloto o contador e o gate sao compartilhados.
+        /// </summary>
+        public async Task HandlePlayerEventAsync(Session.Session sender, uint seq, byte[] payload, byte[] originalDatagram, CancellationToken ct)
+        {
+            byte kind;
+            float dirX;
+            float dirY;
+            float dirZ;
+            float originX;
+            float originY;
+            float originZ;
+            long timestampTicks;
+            if (!TryParsePlayerEvent(payload, out kind, out dirX, out dirY, out dirZ, out originX, out originY, out originZ, out timestampTicks))
+            {
+                _log.Log(ServerLogLevel.Warning, "GAME", "PLAYER_EVENT truncado de " + sender.Id + " (drop)");
+                return;
             }
             if (!_relay.ShouldRelay(sender, seq))
             {
@@ -626,6 +661,60 @@ namespace OriCoopDedicatedServer.Net.Game
             {
                 return false;
             }
+            return true;
+        }
+
+        /// <summary>
+        /// Corpo PLAYER_EVENT 19 (ordem congelada, 37 bytes, D-11):
+        /// marcador 19 + kind byte + dir(3 floats) + origin(3 floats) +
+        /// timestamp long. Identidade NUNCA no corpo (clientId do header).
+        /// Espelho de construcao para testes (SmokeProbe round-trip).
+        /// </summary>
+        public static byte[] BuildPlayerEventPayload(
+            byte kind, float dirX, float dirY, float dirZ,
+            float originX, float originY, float originZ, long timestampTicks)
+        {
+            byte[] payload = new byte[PlayerEventProtocol.BodySize];
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, 4), (int)PacketType.PLAYER_EVENT);
+            payload[PlayerEventProtocol.OffKind] = kind;
+            WriteFloat(payload, PlayerEventProtocol.OffDirection, dirX);
+            WriteFloat(payload, PlayerEventProtocol.OffDirection + 4, dirY);
+            WriteFloat(payload, PlayerEventProtocol.OffDirection + 8, dirZ);
+            WriteFloat(payload, PlayerEventProtocol.OffOrigin, originX);
+            WriteFloat(payload, PlayerEventProtocol.OffOrigin + 4, originY);
+            WriteFloat(payload, PlayerEventProtocol.OffOrigin + 8, originZ);
+            BinaryPrimitives.WriteInt64LittleEndian(payload.AsSpan(PlayerEventProtocol.OffTimestamp, 8), timestampTicks);
+            return payload;
+        }
+
+        public static bool TryParsePlayerEvent(
+            byte[] payload, out byte kind, out float dirX, out float dirY, out float dirZ,
+            out float originX, out float originY, out float originZ, out long timestampTicks)
+        {
+            kind = 0;
+            dirX = 0f;
+            dirY = 0f;
+            dirZ = 0f;
+            originX = 0f;
+            originY = 0f;
+            originZ = 0f;
+            timestampTicks = 0L;
+            if (payload == null || payload.Length < PlayerEventProtocol.MinBodyLength)
+            {
+                return false;
+            }
+            if (BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, 4)) != (int)PacketType.PLAYER_EVENT)
+            {
+                return false;
+            }
+            kind = payload[PlayerEventProtocol.OffKind];
+            dirX = ReadFloat(payload, PlayerEventProtocol.OffDirection);
+            dirY = ReadFloat(payload, PlayerEventProtocol.OffDirection + 4);
+            dirZ = ReadFloat(payload, PlayerEventProtocol.OffDirection + 8);
+            originX = ReadFloat(payload, PlayerEventProtocol.OffOrigin);
+            originY = ReadFloat(payload, PlayerEventProtocol.OffOrigin + 4);
+            originZ = ReadFloat(payload, PlayerEventProtocol.OffOrigin + 8);
+            timestampTicks = BinaryPrimitives.ReadInt64LittleEndian(payload.AsSpan(PlayerEventProtocol.OffTimestamp, 8));
             return true;
         }
 

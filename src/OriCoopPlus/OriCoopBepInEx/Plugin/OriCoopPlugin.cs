@@ -5,6 +5,7 @@ using BepInEx.Configuration;
 using HarmonyLib;
 using OriCoopBepInEx.Client;
 using OriCoopBepInEx.Domain;
+using OriCoopBepInEx.Events;
 using OriCoopBepInEx.Networking;
 using OriCoopBepInEx.UI;
 using UnityEngine;
@@ -138,6 +139,8 @@ namespace OriCoopBepInEx.Plugin
                 _network.IdentityAssigned += OnIdentityAssigned;
                 _network.PlayerDisconnected += OnPlayerDisconnected;
                 _network.ConfigSyncReceived += OnConfigSyncReceived;
+                _network.PlayerEventReceived += OnPlayerEventReceived;
+                PlayerEventCore.BindTransport(_network);
                 _network.Start();
 
                 Logger.LogInfo(string.Format("Conectando ao servidor Ori Coop em {0}:{1} como '{2}'...", host, port, nick));
@@ -162,6 +165,8 @@ namespace OriCoopBepInEx.Plugin
                     _network.IdentityAssigned -= OnIdentityAssigned;
                     _network.PlayerDisconnected -= OnPlayerDisconnected;
                     _network.ConfigSyncReceived -= OnConfigSyncReceived;
+                    _network.PlayerEventReceived -= OnPlayerEventReceived;
+                    PlayerEventCore.BindTransport(null);
                     _network.Dispose();
                 }
                 catch (Exception ex)
@@ -278,6 +283,8 @@ namespace OriCoopBepInEx.Plugin
             _network.IdentityAssigned += OnIdentityAssigned;
             _network.PlayerDisconnected += OnPlayerDisconnected;
             _network.ConfigSyncReceived += OnConfigSyncReceived;
+            _network.PlayerEventReceived += OnPlayerEventReceived;
+            PlayerEventCore.BindTransport(_network);
             _network.Start();
 
             _harmony = new Harmony("com.ikkikuuro.oricoop");
@@ -308,6 +315,22 @@ namespace OriCoopBepInEx.Plugin
                 _mainThreadActions.Enqueue(delegate
                 {
                     _remotePlayerManager.HandleSnapshot(snapshot);
+                });
+            }
+        }
+
+        // Evento de personagem recebido (fase 3): nada de Unity aqui (thread
+        // de rede) — enfileira para a main thread, que roteia ao manager,
+        // que despacha no PlayerEventCore ate o visual do puppet. Nunca
+        // publica de volta (sem eco, D-07).
+        private void OnPlayerEventReceived(int senderId, SpiritFlameEventData data)
+        {
+            byte kind = data.Kind;
+            lock (_mainThreadActions)
+            {
+                _mainThreadActions.Enqueue(delegate
+                {
+                    _remotePlayerManager.HandlePlayerEvent(senderId, kind, data);
                 });
             }
         }

@@ -549,7 +549,8 @@ namespace OriCoopDedicatedServer.Net
         /// Criticos (D-10, lista em <see cref="IsCriticalPacket"/>): chat -5,
         /// CONFIG_SYNC 16, TELEPORT_REQUEST 15, SYNC_ABILITY 10, SYNC_LEVER 11,
         /// SYNC_DOOR 12, SYNC_WORLDEVENT 14, SKILL 7, COLOR 6, DISCONNECT 4.
-        /// PLAYER_STATE 18 e Ping 104 nunca geram pendencia (unreliable).
+        /// PLAYER_STATE 18, PLAYER_EVENT 19 e Ping 104 nunca geram pendencia
+        /// (unreliable, D-09).
         /// </summary>
         private static bool IsCriticalPacket(int packetId)
         {

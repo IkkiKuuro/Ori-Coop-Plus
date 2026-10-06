@@ -29,7 +29,11 @@ namespace OriCoop
         TELEPORT_REQUEST = 15,
         CONFIG_SYNC = 16,
         DUMMY_ACTION = 17,
-        PLAYER_STATE = 18
+        PLAYER_STATE = 18,
+        // PlayerEventCore piloto (fase 3, D-09/D-10): unreliable sequenciado,
+        // mesma classe do PLAYER_STATE 18. Quebra one-way: exige cliente e
+        // servidor do mesmo build, docs/protocol.md atualizado na mesma mudanca.
+        PLAYER_EVENT = 19
     }
 
     public enum CoopSkillType

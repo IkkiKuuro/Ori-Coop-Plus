@@ -319,5 +319,55 @@ namespace OriCoopBepInEx.Client
             _targetPosition = position;
             transform.position = position;
         }
+
+        // Reproducao visual do Spirit Flame remoto (fase 3, piloto, D-13):
+        // SOMENTE o clipe de ataque, resolvido via AnimationRegistry
+        // exact-then-state com retorno fail-closed em null (D-15) — nunca
+        // chute para Idle generico. Zero efeito gameplay: sem dano, sem
+        // colisao, sem mutacao de estado. Particula, SFX transiente e
+        // projetil fake sao escopo do plano 02, nao aqui.
+        public void PlaySpiritFlameVisual(Vector3 origin, Vector3 direction)
+        {
+            if (_animator == null)
+            {
+                return;
+            }
+
+            if (!AnimationRegistry.IsPrewarmed)
+            {
+                try { AnimationRegistry.Prewarm(); } catch { }
+            }
+
+            TextureAnimationWithTransitions clip;
+            if (!AnimationRegistry.TryResolveState(ActionVisualState.AimThrow, out clip) || clip == null)
+            {
+                try
+                {
+                    AnimationRegistry.RefreshFromSein();
+                    AnimationRegistry.TryResolveState(ActionVisualState.AimThrow, out clip);
+                }
+                catch { }
+            }
+
+            if (clip == null)
+            {
+                if (OriCoopPlugin.IsAnimVerbose())
+                {
+                    OriCoopPlugin.LogInfo(string.Format("[EVENT] P{0} kind=spiritflame aplicado=manteve-atual motivo=clip-desconhecido",
+                        PlayerId));
+                }
+                return;
+            }
+
+            if (!IsPlayingClip(_animator, clip))
+            {
+                _animator.SetAnimation(clip, true);
+            }
+            if (OriCoopPlugin.IsAnimVerbose())
+            {
+                OriCoopPlugin.LogInfo(string.Format("[EVENT] P{0} kind=spiritflame aplicado={1} motivo=recebido",
+                    PlayerId, clip.name));
+            }
+        }
     }
 }
