@@ -325,6 +325,16 @@ Use `/coop` sem argumentos para consultar o estado atual.
    - Acesse pelo submenu "Configurar Conexao de Servidor" ou pela tecla de atalho **F6**.
    - Permite alterar IP, Porta e Nickname em tempo real, buscar servidores na LAN (`Buscar LAN`) e conectar/desconectar sem reiniciar o jogo.
 
+### Validacao cobertura total Sein no puppet (build 2026-10-06 — pendente de teste em jogo)
+
+`OriCoopBepInEx.dll` (88.064 bytes) compilada sem erros/avisos e implantada em
+`<ORI_DIR>\BepInEx\plugins\`. O puppet remoto agora tem acesso a todas as ~100
+animacoes do Sein (nado, carry, parede, hurt, mira/throw, alavanca etc.), nao so
+locomocao. Com 2 clientes, confirmar: `F8` lista clipes `src=sein` cobrindo os
+24 estados; nadar/carregar/parede aparecem no remoto; sem re-set por pacote
+(comparacao pelo wrapper). Servidor inalterado (State e byte opaco).
+Resultado da rodada: **a confirmar** — rodar com 2 clientes e anotar aqui.
+
 ### Validacao do rework de anims + puppet leve + teleporte/UDP (builds 2026-10-05 — pendente de teste em jogo)
 
 Procedimento em [`docs/anim-test-battery.md`](anim-test-battery.md) (T0–T4).

@@ -15,7 +15,22 @@ namespace OriCoop
         Glide = 8,
         ChargeJump = 9,
         Stomp = 10,
-        Dash = 11
+        Dash = 11,
+        // Novos estados (coop): o puppet remoto precisa de acesso a TODAS as
+        // animacoes do Sein, nao so locomocao. Append-only para nao quebrar
+        // o protocolo (State viaja como byte opaco).
+        Swim = 12,
+        Carry = 13,
+        GrabWall = 14,
+        GrabBlock = 15,
+        Hurt = 16,
+        Crouch = 17,
+        LookUp = 18,
+        AimThrow = 19,
+        PushAgainstWall = 20,
+        EdgeClamber = 21,
+        Lever = 22,
+        StandingOnEdge = 23
     }
 
     public struct AnimationSyncData

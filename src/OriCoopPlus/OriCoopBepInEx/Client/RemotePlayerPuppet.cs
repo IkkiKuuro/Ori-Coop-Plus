@@ -158,17 +158,15 @@ namespace OriCoopBepInEx.Client
 
             if (targetClip == null)
             {
+                // O proprio puppet e visual despojado (sem os MonoBehaviours
+                // do Sein), entao re-coletar dele nao adianta: atualiza do
+                // Sein vivo.
                 try
                 {
-                    System.Collections.Generic.List<TextureAnimationWithTransitions> local =
-                        AnimationRegistry.CollectClips(gameObject);
-                    if (local != null && local.Count > 0)
+                    AnimationRegistry.RefreshFromSein();
+                    if (!AnimationRegistry.TryResolveExact(animName, animHash, out targetClip))
                     {
-                        AnimationRegistry.RegisterSeinClips(local);
-                        if (!AnimationRegistry.TryResolveExact(animName, animHash, out targetClip))
-                        {
-                            AnimationRegistry.TryResolveState(confirmedState, out targetClip);
-                        }
+                        AnimationRegistry.TryResolveState(confirmedState, out targetClip);
                     }
                 }
                 catch { }
@@ -186,7 +184,7 @@ namespace OriCoopBepInEx.Client
                 return;
             }
 
-            if (_animator.CurrentAnimation != targetClip)
+            if (!IsPlayingClip(_animator, targetClip))
             {
                 _animator.SetAnimation(targetClip, true);
                 if (OriCoopPlugin.IsAnimVerbose())
@@ -227,20 +225,16 @@ namespace OriCoopBepInEx.Client
                 AnimationRegistry.TryResolveState(fallbackState, out targetClip);
             }
 
-            // Ultima tentativa: cataloga clipes do proprio puppet e resolve de novo.
+            // Ultima tentativa: atualiza do Sein vivo (o proprio puppet e
+            // visual despojado, re-coletar dele nao adianta) e resolve de novo.
             if (targetClip == null)
             {
                 try
                 {
-                    System.Collections.Generic.List<TextureAnimationWithTransitions> local =
-                        AnimationRegistry.CollectClips(gameObject);
-                    if (local != null && local.Count > 0)
+                    AnimationRegistry.RefreshFromSein();
+                    if (!AnimationRegistry.TryResolveExact(animName, animHash, out targetClip))
                     {
-                        AnimationRegistry.RegisterSeinClips(local);
-                        if (!AnimationRegistry.TryResolveExact(animName, animHash, out targetClip))
-                        {
-                            AnimationRegistry.TryResolveState(fallbackState, out targetClip);
-                        }
+                        AnimationRegistry.TryResolveState(fallbackState, out targetClip);
                     }
                 }
                 catch { }
@@ -249,7 +243,7 @@ namespace OriCoopBepInEx.Client
             bool applied = false;
             if (targetClip != null)
             {
-                if (_animator.CurrentAnimation != targetClip)
+                if (!IsPlayingClip(_animator, targetClip))
                 {
                     _animator.SetAnimation(targetClip, true);
                 }
@@ -260,6 +254,25 @@ namespace OriCoopBepInEx.Client
             {
                 _lastAnimName = animName;
                 ReplicationObservability.TrackPacket(PlayerId, animHash, animName ?? fallbackState.ToString(), applied);
+            }
+        }
+
+        // CurrentAnimation e a TextureAnimation INTERNA enquanto o alvo e o
+        // wrapper (WithTransitions): comparar direto daria sempre diferente
+        // e re-setaria a anim a cada pacote. Compara pelo wrapper atual.
+        private static bool IsPlayingClip(SpriteAnimatorWithTransitions animator, TextureAnimationWithTransitions clip)
+        {
+            if (animator == null || clip == null)
+            {
+                return false;
+            }
+            try
+            {
+                return animator.CurrentTextureAnimationTransitions == clip;
+            }
+            catch
+            {
+                return false;
             }
         }
 

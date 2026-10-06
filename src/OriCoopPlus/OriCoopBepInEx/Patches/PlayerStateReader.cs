@@ -50,6 +50,18 @@ namespace OriCoopBepInEx.Patches
         {
             if (sein.Animation != null && sein.Animation.Animator != null)
             {
+                // Prefere o nome do WRAPPER (TextureAnimationWithTransitions):
+                // e a chave do AnimationRegistry no receptor. Cai para o nome
+                // interno se o wrapper ainda nao estiver atribuido.
+                try
+                {
+                    TextureAnimationWithTransitions wrapper = sein.Animation.Animator.CurrentTextureAnimationTransitions;
+                    if (wrapper != null && !string.IsNullOrEmpty(wrapper.name))
+                    {
+                        return wrapper.name;
+                    }
+                }
+                catch { }
                 TextureAnimation current = sein.Animation.Animator.CurrentAnimation;
                 if (current != null)
                 {
@@ -124,7 +136,19 @@ namespace OriCoopBepInEx.Patches
                     || fromName == ActionVisualState.ChargeJump
                     || fromName == ActionVisualState.DoubleJump
                     || fromName == ActionVisualState.WallSlide
-                    || fromName == ActionVisualState.WallJump)
+                    || fromName == ActionVisualState.WallJump
+                    || fromName == ActionVisualState.Swim
+                    || fromName == ActionVisualState.Carry
+                    || fromName == ActionVisualState.GrabWall
+                    || fromName == ActionVisualState.GrabBlock
+                    || fromName == ActionVisualState.Hurt
+                    || fromName == ActionVisualState.Crouch
+                    || fromName == ActionVisualState.LookUp
+                    || fromName == ActionVisualState.AimThrow
+                    || fromName == ActionVisualState.PushAgainstWall
+                    || fromName == ActionVisualState.EdgeClamber
+                    || fromName == ActionVisualState.Lever
+                    || fromName == ActionVisualState.StandingOnEdge)
                 {
                     return fromName;
                 }
@@ -179,6 +203,68 @@ namespace OriCoopBepInEx.Patches
             if (lower.Contains("chargedash") || (lower.Contains("dash") && !lower.Contains("dashboard")))
             {
                 state = ActionVisualState.Dash;
+                return true;
+            }
+            if (lower.Contains("swim") || lower.Contains("jumpoutofwater") || lower.Contains("underwater"))
+            {
+                state = ActionVisualState.Swim;
+                return true;
+            }
+            if (lower.Contains("carry") || lower.Contains("pickup"))
+            {
+                state = ActionVisualState.Carry;
+                return true;
+            }
+            if (lower.Contains("grabwall") || lower.Contains("climbup") || lower.Contains("climbdown")
+                || lower.Contains("edgeclimb"))
+            {
+                state = ActionVisualState.GrabWall;
+                return true;
+            }
+            if (lower.Contains("edgeclamber"))
+            {
+                state = ActionVisualState.EdgeClamber;
+                return true;
+            }
+            if (lower.Contains("grabblock") || lower.Contains("cantpull") || lower.Contains("cantpush")
+                || ((lower.Contains("push") || lower.Contains("pull")) && lower.Contains("block")))
+            {
+                state = ActionVisualState.GrabBlock;
+                return true;
+            }
+            if (lower.Contains("pushagainstwall"))
+            {
+                state = ActionVisualState.PushAgainstWall;
+                return true;
+            }
+            if (lower.Contains("hurt") || lower.Contains("damage"))
+            {
+                state = ActionVisualState.Hurt;
+                return true;
+            }
+            if (lower.Contains("crouch"))
+            {
+                state = ActionVisualState.Crouch;
+                return true;
+            }
+            if (lower.Contains("lookup") || lower.Contains("lookdown"))
+            {
+                state = ActionVisualState.LookUp;
+                return true;
+            }
+            if (lower.Contains("aim") || lower.Contains("throw"))
+            {
+                state = ActionVisualState.AimThrow;
+                return true;
+            }
+            if (lower.Contains("lever"))
+            {
+                state = ActionVisualState.Lever;
+                return true;
+            }
+            if (lower.Contains("facingedge") || lower.Contains("standingonedge"))
+            {
+                state = ActionVisualState.StandingOnEdge;
                 return true;
             }
             return false;

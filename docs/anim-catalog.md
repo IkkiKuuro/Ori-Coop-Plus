@@ -22,6 +22,20 @@ sprite aleatório: resolve desconhecido retorna null e o puppet mantém a
 > stomp/groundpound, dash) antes da velocidade; `IsOnGround` real substitui a
 > heurística `|vy|<1`.
 
+> Correção 2026-10-06 (DLL 88.064 bytes): cobertura total do Sein. Novos
+> estados append-only no enum (`Swim=12 … StandingOnEdge=23`, byte opaco no
+> protocolo, sem quebra): `CollectFromObject` agora lê `List<T>` (antes só
+> arrays — `FastThrowAnimations`, `m_states` eram perdidos), profundidade 5 e
+> clipes dos drivers (`SpriteAnimatorWithTransitions.Default/Current/Previous`);
+> `Prewarm` sempre faz merge global para resolve exato; novo
+> `RefreshFromSein()` idempotente (só adiciona) chamado pelo factory a cada
+> puppet e pelo puppet quando o resolve falha (antes re-coletava do próprio
+> puppet despojado — inútil); `RegisterClips` indexa nome do wrapper E nome
+> interno (`TextureAnimation.name`); sender envia nome do wrapper; comparação
+> de "já tocando" usa `CurrentTextureAnimationTransitions` (comparar
+> `CurrentAnimation` interna com wrapper dava sempre diferente e re-setava a
+> cada pacote).
+
 | Estado | Aliases SEED (case-insensitive) | Hash FNV1a |
 |--------|---------------------------------|------------|
 | Idle | idle, oriidle, seinidle, stand, oristand | a confirmar |
@@ -36,6 +50,18 @@ sprite aleatório: resolve desconhecido retorna null e o puppet mantém a
 | ChargeJump | chargejump, orichargejump, charge | a confirmar |
 | Stomp | stomp, oristomp, seinstomp, groundpound | a confirmar |
 | Dash | dash, oridash, seindash, airdash, chargedash | a confirmar |
+| Swim | swim, oriswim, seinswim, swimsurface, swimidle, jumpoutofwater | a confirmar |
+| Carry | carry, oricarry, seincarry, pickup | a confirmar |
+| GrabWall | grabwall, origrabwall, climb, climbup, climbdown, edgeclimb | a confirmar |
+| GrabBlock | grabblock, push, pull | a confirmar |
+| Hurt | hurt, orihurt, seinhurt | a confirmar |
+| Crouch | crouch, oricrouch, seicrouch | a confirmar |
+| LookUp | lookup, orilookup | a confirmar |
+| AimThrow | aim, oriaim, throw, orithrow | a confirmar |
+| PushAgainstWall | pushagainstwall | a confirmar |
+| EdgeClamber | (derivado por nome edgeclamber; fallback exato cobre) | a confirmar |
+| Lever | lever | a confirmar |
+| StandingOnEdge | standingonedge, facingedge | a confirmar |
 
 Notas:
 - O resolve exato por hash/nome (`ComputeFnv1aHash` do `CurrentAnimation.name`

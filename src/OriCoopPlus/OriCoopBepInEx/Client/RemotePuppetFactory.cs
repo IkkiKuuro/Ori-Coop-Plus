@@ -153,17 +153,16 @@ namespace OriCoopBepInEx.Client
 
         private static void EnsureSeinClips(GameObject seinGo)
         {
-            if (s_seinClipsRegistered)
-            {
-                return;
-            }
+            // Refresh idempotente (so adiciona): o Sein pode nao estar
+            // totalmente inicializado no primeiro puppet, entao re-coleta
+            // sempre em vez de travar na primeira coleta parcial.
             try
             {
-                List<TextureAnimationWithTransitions> clips = AnimationRegistry.CollectClips(seinGo);
-                if (clips != null && clips.Count > 0)
+                int added = AnimationRegistry.RefreshFromSein();
+                if (added > 0 || !s_seinClipsRegistered)
                 {
-                    AnimationRegistry.RegisterSeinClips(clips);
                     s_seinClipsRegistered = true;
+                    Debug.Log(string.Format("[OriCoop] Sein clips atualizados (+{0}).", added));
                 }
             }
             catch { }

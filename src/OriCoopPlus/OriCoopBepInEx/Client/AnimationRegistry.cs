@@ -76,9 +76,71 @@ namespace OriCoopBepInEx.Client
                 { "seindash", ActionVisualState.Dash },
                 { "airdash", ActionVisualState.Dash },
                 { "chargedash", ActionVisualState.Dash },
+                { "swim", ActionVisualState.Swim },
+                { "oriswim", ActionVisualState.Swim },
+                { "seinswim", ActionVisualState.Swim },
+                { "swimsurface", ActionVisualState.Swim },
+                { "swimidle", ActionVisualState.Swim },
+                { "jumpoutofwater", ActionVisualState.Swim },
+                { "carry", ActionVisualState.Carry },
+                { "oricarry", ActionVisualState.Carry },
+                { "seincarry", ActionVisualState.Carry },
+                { "pickup", ActionVisualState.Carry },
+                { "grabwall", ActionVisualState.GrabWall },
+                { "origrabwall", ActionVisualState.GrabWall },
+                { "climb", ActionVisualState.GrabWall },
+                { "climbup", ActionVisualState.GrabWall },
+                { "climbdown", ActionVisualState.GrabWall },
+                { "edgeclimb", ActionVisualState.GrabWall },
+                { "edgeclamber", ActionVisualState.GrabWall },
+                { "grabblock", ActionVisualState.GrabBlock },
+                { "push", ActionVisualState.GrabBlock },
+                { "pull", ActionVisualState.GrabBlock },
+                { "pushagainstwall", ActionVisualState.PushAgainstWall },
+                { "hurt", ActionVisualState.Hurt },
+                { "orihurt", ActionVisualState.Hurt },
+                { "seinhurt", ActionVisualState.Hurt },
+                { "crouch", ActionVisualState.Crouch },
+                { "oricrouch", ActionVisualState.Crouch },
+                { "seicrouch", ActionVisualState.Crouch },
+                { "lookup", ActionVisualState.LookUp },
+                { "orilookup", ActionVisualState.LookUp },
+                { "aim", ActionVisualState.AimThrow },
+                { "oriaim", ActionVisualState.AimThrow },
+                { "throw", ActionVisualState.AimThrow },
+                { "orithrow", ActionVisualState.AimThrow },
+                { "lever", ActionVisualState.Lever },
+                { "standingonedge", ActionVisualState.StandingOnEdge },
+                { "facingedge", ActionVisualState.StandingOnEdge },
             };
 
         public static bool IsPrewarmed { get; private set; }
+
+        // Re-coleta idempotente do Sein vivo: garante que o puppet remoto
+        // tenha acesso a TODAS as animacoes mesmo se o Prewarm correu cedo
+        // demais (habilidades ainda nao inicializadas). So adiciona, nunca
+        // remove — seguro chamar a qualquer momento.
+        public static int RefreshFromSein()
+        {
+            int added = 0;
+            try
+            {
+                GameObject seinGo = FindSeinObject();
+                if (seinGo != null)
+                {
+                    List<TextureAnimationWithTransitions> seinClips = CollectClips(seinGo);
+                    if (seinClips != null && seinClips.Count > 0)
+                    {
+                        int before = s_animNameCache.Count;
+                        RegisterSeinClips(seinClips);
+                        added = s_animNameCache.Count - before;
+                        IsPrewarmed = true;
+                    }
+                }
+            }
+            catch { }
+            return added;
+        }
 
         public static void Prewarm()
         {
@@ -101,22 +163,31 @@ namespace OriCoopBepInEx.Client
                     {
                         RegisterSeinClips(seinClips);
                         IsPrewarmed = true;
-                        Debug.Log(string.Format("[OriCoop] AnimationRegistry pré-aquecido do Sein: {0} clipes.", s_animNameCache.Count));
-                        return;
                     }
                 }
             }
             catch { }
 
-            // Fallback: scan global, mas SEM popular s_stateClips (só cache
-            // nome/hash para resolve exato de assets compartilhados).
-            TextureAnimationWithTransitions[] allClips = Resources.FindObjectsOfTypeAll<TextureAnimationWithTransitions>();
-            if (allClips != null && allClips.Length > 0)
+            // Merge global SOMENTE para resolve exato (populateStateClips=false):
+            // hash/nome apontam para o MESMO asset compartilhado, entao e
+            // seguro mesmo vindo de inimigos. Garante que nenhum clipe do
+            // Sein fique de fora por ter sido perdido no reflection.
+            MergeGlobalForExact();
+        }
+
+        private static void MergeGlobalForExact()
+        {
+            try
             {
-                RegisterClips(allClips, false);
-                IsPrewarmed = true;
-                Debug.Log(string.Format("[OriCoop] AnimationRegistry pré-aquecido (global, sem fallback): {0} clipes catalogados.", s_animNameCache.Count));
+                TextureAnimationWithTransitions[] allClips = Resources.FindObjectsOfTypeAll<TextureAnimationWithTransitions>();
+                if (allClips != null && allClips.Length > 0)
+                {
+                    RegisterClips(allClips, false);
+                    IsPrewarmed = true;
+                    Debug.Log(string.Format("[OriCoop] AnimationRegistry: {0} clipes (Sein + global-exato).", s_animNameCache.Count));
+                }
             }
+            catch { }
         }
 
         private static GameObject FindSeinObject()
@@ -141,6 +212,9 @@ namespace OriCoopBepInEx.Client
         // hierarquia (SeinIdle.IdleAnimation, SeinRun.RunAnimation, arrays de
         // SeinJump/SeinDoubleJump/SeinWallJump, DirectionalAnimationSets do
         // Bash, containers CarryAnimations/SwimmingAnimations...).
+        // Inclui os drivers de animacao (CharacterAnimationSystem.m_states,
+        // SpriteAnimatorWithTransitions.Default/Current/Previous) para que o
+        // puppet tenha acesso a TODOS os clipes, nao so aos campos logicos.
         public static List<TextureAnimationWithTransitions> CollectClips(GameObject root)
         {
             List<TextureAnimationWithTransitions> result = new List<TextureAnimationWithTransitions>();
@@ -161,14 +235,43 @@ namespace OriCoopBepInEx.Client
                     List<object> visited = new List<object>();
                     CollectFromObject(mb, result, visited, 0);
                 }
+                CollectAnimationSystemClips(root, result);
             }
             catch { }
             return result;
         }
 
+        private static void CollectAnimationSystemClips(GameObject root, List<TextureAnimationWithTransitions> result)
+        {
+            try
+            {
+                SpriteAnimatorWithTransitions[] animators = root.GetComponentsInChildren<SpriteAnimatorWithTransitions>(true);
+                for (int i = 0; i < animators.Length; i++)
+                {
+                    SpriteAnimatorWithTransitions animator = animators[i];
+                    if (animator == null)
+                    {
+                        continue;
+                    }
+                    AddClip(result, animator.DefaultAnimation);
+                    AddClip(result, animator.CurrentTextureAnimationTransitions);
+                    AddClip(result, animator.PreviousTextureAnimationTransitions);
+                }
+            }
+            catch { }
+        }
+
+        private static void AddClip(List<TextureAnimationWithTransitions> result, TextureAnimationWithTransitions clip)
+        {
+            if (clip != null && !result.Contains(clip))
+            {
+                result.Add(clip);
+            }
+        }
+
         private static void CollectFromObject(object obj, List<TextureAnimationWithTransitions> result, List<object> visited, int depth)
         {
-            if (obj == null || depth > 3)
+            if (obj == null || depth > 5)
             {
                 return;
             }
@@ -213,6 +316,38 @@ namespace OriCoopBepInEx.Client
                     }
                     continue;
                 }
+                // List<T> (ex.: SeinGrenadeAttack.FastThrowAnimations,
+                // CharacterAnimationSystem.m_states): o scan antigo so lia
+                // arrays e perdia esses clipes — o puppet ficava sem acesso.
+                System.Collections.IList list = value as System.Collections.IList;
+                if (list != null && !(value is UnityEngine.Object) && !(value is string))
+                {
+                    for (int j = 0; j < list.Count; j++)
+                    {
+                        object item;
+                        try
+                        {
+                            item = list[j];
+                        }
+                        catch
+                        {
+                            continue;
+                        }
+                        TextureAnimationWithTransitions itemClip = item as TextureAnimationWithTransitions;
+                        if (itemClip != null)
+                        {
+                            if (!result.Contains(itemClip))
+                            {
+                                result.Add(itemClip);
+                            }
+                        }
+                        else if (item != null && depth < 5 && !(item is UnityEngine.Object) && !(item is string))
+                        {
+                            CollectFromObject(item, result, visited, depth + 1);
+                        }
+                    }
+                    continue;
+                }
                 if (fieldType.IsArray)
                 {
                     Array arr = value as Array;
@@ -237,7 +372,7 @@ namespace OriCoopBepInEx.Client
                                     result.Add(itemClip);
                                 }
                             }
-                            else if (item != null && depth < 3 && !(item is UnityEngine.Object) && !(item is string))
+                            else if (item != null && depth < 5 && !(item is UnityEngine.Object) && !(item is string))
                             {
                                 CollectFromObject(item, result, visited, depth + 1);
                             }
@@ -294,15 +429,21 @@ namespace OriCoopBepInEx.Client
                     continue;
                 }
 
-                uint hash = AnimationSyncData.ComputeFnv1aHash(clip.name);
-                if (!s_animHashCache.ContainsKey(hash))
+                IndexClip(clip.name, clip);
+                // O sender (PlayerStateReader) pode enviar o nome da animacao
+                // INTERNA (TextureAnimation.name) enquanto aqui a chave e o
+                // nome do wrapper (ScriptableObject.name) — ou vice-versa.
+                // Indexa os dois apontando para o mesmo wrapper para o
+                // resolve exato por hash/nome nunca errar.
+                try
                 {
-                    s_animHashCache[hash] = clip;
+                    TextureAnimation inner = clip.Animation;
+                    if (inner != null && !string.IsNullOrEmpty(inner.name) && inner.name != clip.name)
+                    {
+                        IndexClip(inner.name, clip);
+                    }
                 }
-                if (!s_animNameCache.ContainsKey(clip.name))
-                {
-                    s_animNameCache[clip.name] = clip;
-                }
+                catch { }
 
                 if (!populateStateClips)
                 {
@@ -320,6 +461,35 @@ namespace OriCoopBepInEx.Client
                 {
                     s_stateClips[mappedState] = clip;
                 }
+                else
+                {
+                    // Tenta tambem pelo nome interno (ex.: wrapper generico
+                    // com inner "swimIdle"): fallback por estado do puppet.
+                    try
+                    {
+                        TextureAnimation innerForState = clip.Animation;
+                        if (innerForState != null && !string.IsNullOrEmpty(innerForState.name)
+                            && s_nameToState.TryGetValue(innerForState.name, out mappedState)
+                            && !s_stateClips.ContainsKey(mappedState))
+                        {
+                            s_stateClips[mappedState] = clip;
+                        }
+                    }
+                    catch { }
+                }
+            }
+        }
+
+        private static void IndexClip(string name, TextureAnimationWithTransitions clip)
+        {
+            uint hash = AnimationSyncData.ComputeFnv1aHash(name);
+            if (!s_animHashCache.ContainsKey(hash))
+            {
+                s_animHashCache[hash] = clip;
+            }
+            if (!s_animNameCache.ContainsKey(name))
+            {
+                s_animNameCache[name] = clip;
             }
         }
 
