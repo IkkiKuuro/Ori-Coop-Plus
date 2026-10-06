@@ -7,8 +7,9 @@ using System.Text;
 
 // SmokeProbe: harness headless BCL-only (sem NuGet) do tracer 02-01.
 // --test all (padrao): sobe o servidor --net2 na porta de teste, executa
-//   invalid-magic -> handshake -> relay -> ping, derruba o servidor.
-// --test handshake|relay|ping: conecta num servidor --net2 ja em pe (--port).
+//   invalid-magic -> handshake -> relay -> player-event -> ping, derruba o servidor.
+// --test handshake|relay|event|ping: conecta num servidor --net2 ja em pe (--port).
+//   (relay inclui o caso player-event 19; event roda so o caso 19.)
 // Saida final SMOKE_OK (exit 0) ou SMOKE_FAIL: motivo (exit 1).
 internal static class Program
 {
@@ -23,6 +24,7 @@ internal static class Program
     private const int MsgPong = 105;
     private const int MsgReject = 106;
     private const int PlayerStateId = 18;
+    private const int PlayerEventId = 19;
     private const int ChatPacket = -5;
     private const int DisconnectPacket = 4;
     private const byte FlagReliable = 0x01;
@@ -73,6 +75,7 @@ internal static class Program
                 FailUnless(TestInvalidMagic(port), "invalid-magic sem Reject com mensagem");
                 FailUnless(TestHandshake(port, 1), "handshake falhou");
                 FailUnless(TestRelay(port), "relay falhou");
+                FailUnless(TestPlayerEvent(port), "player-event relay falhou");
                 FailUnless(TestPing(port), "ping falhou");
                 FailUnless(TestReliable(port), "reliable falhou");
                 FailUnless(TestToken(port), "token falhou");
@@ -150,8 +153,15 @@ internal static class Program
             }
             else if (mode == "relay")
             {
-                ok = TestRelay(port);
+                // Grupo relay: snapshot 18 + evento 19 (byte-identico,
+                // sem eco, drop-old, sem SysAck em ambos).
+                ok = TestRelay(port) && TestPlayerEvent(port);
                 token = "RELAY_OK";
+            }
+            else if (mode == "event")
+            {
+                ok = TestPlayerEvent(port);
+                token = "EVENT_OK";
             }
             else if (mode == "ping")
             {
@@ -189,7 +199,7 @@ internal static class Program
             }
             else
             {
-                Console.WriteLine("SMOKE_FAIL: teste desconhecido '" + mode + "' (use all|handshake|relay|ping|reliable|timeout|token|full|game)");
+                Console.WriteLine("SMOKE_FAIL: teste desconhecido '" + mode + "' (use all|handshake|relay|event|ping|reliable|timeout|token|full|game)");
                 return 1;
             }
             if (!ok)
@@ -518,6 +528,140 @@ internal static class Program
             }
 
             Console.WriteLine("PASS relay (B recebeu snapshot de A intacto; sem eco; drop-old ok)");
+            SendDisconnect(clientA, server, idA, tokenA, ref seqA);
+            SendDisconnect(clientB, server, idB, tokenB, ref seqB);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Caso packet-19 (fase 3, D-08/D-09): prova no fio que PLAYER_EVENT
+    /// segue as convencoes de framing (corpo 37B com marcador 19,
+    /// identidade no header, blind relay) na classe unreliable correta.
+    /// Duas sessoes prontas A e B; A envia datagrama 19 com payload fixo
+    /// conhecido e seq N; B recebe bytes identicos; A nao recebe eco;
+    /// reenvio da mesma seq N e de seq mais antiga sao descartados pelo
+    /// gate (sem segundo relay); nenhum SysAck 103 e gerado para o 19
+    /// em nenhuma direcao. Espelha o formato do TestRelay.
+    /// </summary>
+    private static bool TestPlayerEvent(int port)
+    {
+        using (var clientA = NewClient())
+        using (var clientB = NewClient())
+        {
+            var server = new IPEndPoint(IPAddress.Loopback, port);
+            uint seqA = 0;
+            uint seqB = 0;
+            if (!HelloConfirm(clientA, server, "Event_A", ref seqA, out int idA, out uint tokenA) || idA <= 0)
+            {
+                Console.WriteLine("FAIL player-event (handshake A)");
+                return false;
+            }
+            if (!HelloConfirm(clientB, server, "Event_B", ref seqB, out int idB, out uint tokenB) || idB <= 0 || idB == idA)
+            {
+                Console.WriteLine("FAIL player-event (handshake B)");
+                return false;
+            }
+            DrainAndAck(clientA, server, idA, tokenA, ref seqA, 1200);
+            DrainAndAck(clientB, server, idB, tokenB, ref seqB, 1200);
+
+            byte[] body = BuildPlayerEventBody();
+            if (body.Length != 37 || ReadI32(body, 0) != PlayerEventId)
+            {
+                Console.WriteLine("FAIL player-event (corpo fora do contrato 37B/marcador 19)");
+                return false;
+            }
+            uint eventSeq = ++seqA;
+            byte[] evt = BuildEnvelope(0, eventSeq, idA, tokenA, PlayerEventId, body);
+            clientA.Send(evt, evt.Length, server);
+
+            // B deve receber o relay com clientId + seq + corpo preservados
+            // byte a byte (sem reconstrucao, sem carimbo de fromId).
+            var remote = new IPEndPoint(IPAddress.Any, 0);
+            DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+            bool relayOk = false;
+            while (DateTime.UtcNow < deadline && !relayOk)
+            {
+                try
+                {
+                    byte[] reply = clientB.Receive(ref remote);
+                    if (TryParseHeader(reply, out int packetId, out uint rseq, out int rclient, out _, out byte[] rbody)
+                        && packetId == PlayerEventId && rclient == idA && rseq == eventSeq && BytesEqual(rbody, body))
+                    {
+                        relayOk = true;
+                    }
+                }
+                catch (SocketException)
+                {
+                }
+            }
+            if (!relayOk)
+            {
+                Console.WriteLine("FAIL player-event (B nao recebeu evento de A intacto)");
+                return false;
+            }
+
+            // A nao deve receber eco do proprio evento.
+            clientA.Client.ReceiveTimeout = 600;
+            try
+            {
+                byte[] echo = clientA.Receive(ref remote);
+                if (TryParseHeader(echo, out int packetId, out _, out _, out _, out _) && packetId == PlayerEventId)
+                {
+                    Console.WriteLine("FAIL player-event (eco para o remetente)");
+                    return false;
+                }
+            }
+            catch (SocketException)
+            {
+            }
+
+            // Reenvio com a mesma seq deve ser descartado (drop-old).
+            clientA.Send(evt, evt.Length, server);
+            clientB.Client.ReceiveTimeout = 600;
+            try
+            {
+                byte[] dup = clientB.Receive(ref remote);
+                if (TryParseHeader(dup, out int packetId, out uint rseq, out _, out _, out _) && packetId == PlayerEventId && rseq == eventSeq)
+                {
+                    Console.WriteLine("FAIL player-event (seq repetida foi repassada)");
+                    return false;
+                }
+            }
+            catch (SocketException)
+            {
+            }
+
+            // Seq mais antiga que a ultima vista tambem deve ser descartada.
+            // (eventSeq - 1) e garantidamente < eventSeq: sem wrap aqui, pois
+            // o contador da sessao de teste mal saiu do handshake.
+            byte[] older = BuildEnvelope(0, eventSeq - 1, idA, tokenA, PlayerEventId, body);
+            clientA.Send(older, older.Length, server);
+            try
+            {
+                byte[] stale = clientB.Receive(ref remote);
+                if (TryParseHeader(stale, out int packetId, out _, out _, out _, out _) && packetId == PlayerEventId)
+                {
+                    Console.WriteLine("FAIL player-event (seq antiga foi repassada)");
+                    return false;
+                }
+            }
+            catch (SocketException)
+            {
+            }
+
+            // PLAYER_EVENT unreliable nunca gera SysAck nem pendencia
+            // (fora da lista IsCriticalPacket, como o snapshot 18).
+            uint probeSeq = ++seqA;
+            byte[] probe = BuildEnvelope(0, probeSeq, idA, tokenA, PlayerEventId, BuildPlayerEventBody());
+            clientA.Send(probe, probe.Length, server);
+            if (ExpectSysAck(clientA, probeSeq, 800))
+            {
+                Console.WriteLine("FAIL player-event (packet-19 gerou SysAck/pendencia)");
+                return false;
+            }
+
+            Console.WriteLine("PASS player-event (B recebeu evento de A intacto; sem eco; drop-old ok; sem SysAck)");
             SendDisconnect(clientA, server, idA, tokenA, ref seqA);
             SendDisconnect(clientB, server, idB, tokenB, ref seqB);
             return true;
@@ -1662,6 +1806,26 @@ internal static class Program
         }
     }
 
+    private static byte[] BuildPlayerEventBody()
+    {
+        // Corpo congelado 37B (ordem D-11): marcador 19 + kind byte +
+        // dir(3 floats) + origin(3 floats) + timestamp long. Payload fixo
+        // conhecido para comparacao byte-identica no relay.
+        using (var stream = new MemoryStream())
+        {
+            WriteI32Stream(stream, PlayerEventId);
+            stream.WriteByte(1);
+            WriteF32Stream(stream, 1f);
+            WriteF32Stream(stream, 0f);
+            WriteF32Stream(stream, 0f);
+            WriteF32Stream(stream, 10.5f);
+            WriteF32Stream(stream, 20.25f);
+            WriteF32Stream(stream, -2.5f);
+            WriteI64Stream(stream, 1234567890123456789L);
+            return stream.ToArray();
+        }
+    }
+
     private static byte[] BuildEnvelope(byte flags, uint seq, int clientId, uint token, int packetId, byte[] payload)
     {
         byte[] datagram = new byte[HeaderSize + payload.Length];
@@ -1783,6 +1947,16 @@ internal static class Program
     }
 
     private static void WriteF32Stream(MemoryStream stream, float value)
+    {
+        byte[] bytes = BitConverter.GetBytes(value);
+        if (!BitConverter.IsLittleEndian)
+        {
+            Array.Reverse(bytes);
+        }
+        stream.Write(bytes, 0, bytes.Length);
+    }
+
+    private static void WriteI64Stream(MemoryStream stream, long value)
     {
         byte[] bytes = BitConverter.GetBytes(value);
         if (!BitConverter.IsLittleEndian)
