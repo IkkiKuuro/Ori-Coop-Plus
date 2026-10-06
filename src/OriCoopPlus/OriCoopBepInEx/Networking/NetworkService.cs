@@ -50,12 +50,24 @@ namespace OriCoopBepInEx.Networking
         private readonly IPEndPoint _server;
         private readonly object _sync = new object();
         private readonly Dictionary<int, uint> _lastRelaySeq = new Dictionary<int, uint>();
+        // Dominio de sequencia separado para PLAYER_EVENT 19 (fase 3, plano
+        // 02, D-09 classe): eventos tem contador proprio no envio
+        // (_eventSendSeq) e visto-por-remetente proprio na recepcao
+        // (_lastEventSeq). Rajadas de tiro nunca suprimem snapshots e
+        // vice-versa. O _lastRelaySeq/_sendSeq seguem exclusivos do
+        // PLAYER_STATE 18 (e demais via SendSystem/SendReliable).
+        private readonly Dictionary<int, uint> _lastEventSeq = new Dictionary<int, uint>();
         private readonly Dictionary<uint, PendingSend> _pending = new Dictionary<uint, PendingSend>();
         private Thread _receiveThread;
         private bool _running;
         private int _assignedId = -1;
         private uint _sessionToken;
         private uint _sendSeq;
+        // Contador de envio exclusivo do dominio de eventos (PLAYER_EVENT
+        // 19): alimenta SOMENTE SendEventSystem. O _sendSeq alimenta todo o
+        // resto (snapshots, pings, confiaveis). Ver SendPlayerEvent (D-12:
+        // cada disparo envia na hora, sem throttle no piloto).
+        private uint _eventSendSeq;
         private PlayerSnapshot _queuedSnapshot;
         private string _nickname;
         private string _lastRejectReason = string.Empty;
@@ -438,7 +450,9 @@ namespace OriCoopBepInEx.Networking
         // Evento de personagem (fase 3, piloto Spirit Flame, D-09): corpo com
         // marcador 19 + kind + direcao + origem + timestamp (37 bytes,
         // PlayerEventProtocol), enviado unreliable com flags 0 — nunca
-        // SendReliable (retry de 250 ms represaria tiros visuais).
+        // SendReliable (retry de 250 ms represaria tiros visuais). Dominio
+        // de sequencia proprio (SendEventSystem + _eventSendSeq): cada
+        // disparo envia na hora, sem throttle no piloto (D-12).
         public void SendPlayerEvent(SpiritFlameEventData data)
         {
             if (_assignedId < 0)
@@ -459,7 +473,7 @@ namespace OriCoopBepInEx.Networking
                 writer.Write(data.Origin.Z);
                 writer.Write(data.TimestampTicks);
                 writer.Flush();
-                SendSystem((int)PacketType.PLAYER_EVENT, body.ToArray(), 0);
+                SendEventSystem((int)PacketType.PLAYER_EVENT, body.ToArray(), 0);
             }
         }
 
@@ -569,6 +583,16 @@ namespace OriCoopBepInEx.Networking
         private void SendSystem(int packetId, byte[] body, byte flags)
         {
             uint seq = NextSeq();
+            SendEnvelope(_assignedId, _sessionToken, packetId, seq, flags, body);
+        }
+
+        // Envio do dominio de eventos (PLAYER_EVENT 19): contador proprio
+        // (_eventSendSeq via NextEventSeq), flags 0, sem retry. Nunca usar
+        // para snapshots — o dominio do snapshot (SendSystem + _sendSeq) e
+        // disjunto por desenho (D-09 classe).
+        private void SendEventSystem(int packetId, byte[] body, byte flags)
+        {
+            uint seq = NextEventSeq();
             SendEnvelope(_assignedId, _sessionToken, packetId, seq, flags, body);
         }
 
@@ -684,6 +708,21 @@ namespace OriCoopBepInEx.Networking
             }
         }
 
+        // Contador do dominio de eventos: mesma idioma wrap-safe do NextSeq
+        // (nunca 0), espaco proprio disjunto do _sendSeq.
+        private uint NextEventSeq()
+        {
+            unchecked
+            {
+                _eventSendSeq++;
+                if (_eventSendSeq == 0)
+                {
+                    _eventSendSeq = 1;
+                }
+                return _eventSendSeq;
+            }
+        }
+
         private void SendEnvelope(int clientId, uint token, int packetId, uint seq, byte flags, byte[] body)
         {
             SendRaw(BuildEnvelope(clientId, token, packetId, seq, flags, body));
@@ -762,8 +801,11 @@ namespace OriCoopBepInEx.Networking
                     _sessionToken = token;
                     // Nova sessao: baselines e pendencias antigas morrem aqui;
                     // o re-sync pos-Confirm (CONFIG + snapshots que o servidor
-                    // reenvia) e aplicado pelos handlers abaixo.
+                    // reenvia) e aplicado pelos handlers abaixo. Os DOIS
+                    // dominios de sequencia (snapshots + eventos) sao limpos
+                    // juntos para a nova sessao nao herdar drop-old velho.
                     _lastRelaySeq.Clear();
+                    _lastEventSeq.Clear();
                     lock (_sync)
                     {
                         _pending.Clear();
@@ -832,23 +874,32 @@ namespace OriCoopBepInEx.Networking
                     {
                         throw new InvalidDataException("PLAYER_EVENT sem marcador 19.");
                     }
-                    if (!IsNewerThanLast(headerClientId, seq))
+                    // Dominio de eventos (IsNewerThanLastEvent + _lastEventSeq):
+                    // disjunto do dominio de snapshots — rajadas de tiro
+                    // nunca marcam snapshots como antigos (D-09 classe).
+                    if (!IsNewerThanLastEvent(headerClientId, seq))
                     {
                         return;
                     }
-                    // Corpo fixo de 33 bytes apos o marcador: kind(1) +
-                    // direcao(12) + origem(12) + timestamp(8). Uma checagem
-                    // cobre todas as leituras (regra 4 do protocolo).
+                    // Corpo fixo de 33 bytes apos o marcador: validacao de
+                    // comprimento antes de CADA leitura (regra 4 do
+                    // protocolo, T-03-01). Truncacao lanca
+                    // InvalidDataException com mensagem do pacote 19 —
+                    // contida pelo catch por-pacote do ReceiveLoop, o sync
+                    // nunca para.
                     ExpectRemaining(reader, 33, "PLAYER_EVENT");
                     byte kind = reader.ReadByte();
+                    ExpectRemaining(reader, 32, "PLAYER_EVENT");
                     Vector3Data direction = new Vector3Data(
                         reader.ReadSingle(),
                         reader.ReadSingle(),
                         reader.ReadSingle());
+                    ExpectRemaining(reader, 20, "PLAYER_EVENT");
                     Vector3Data origin = new Vector3Data(
                         reader.ReadSingle(),
                         reader.ReadSingle(),
                         reader.ReadSingle());
+                    ExpectRemaining(reader, 8, "PLAYER_EVENT");
                     long timestamp = reader.ReadInt64();
                     SpiritFlameEventData data = new SpiritFlameEventData(kind, direction, origin, timestamp);
                     RaisePlayerEvent(headerClientId, data);
@@ -1018,6 +1069,28 @@ namespace OriCoopBepInEx.Networking
                 }
             }
             _lastRelaySeq[senderId] = seq;
+            return true;
+        }
+
+        // Drop-old do dominio de eventos (PLAYER_EVENT 19): mesma idioma
+        // wrap-safe do IsNewerThanLast, dicionario proprio por remetente.
+        // Eventos antigos/duplicados caem aqui; snapshots usam o outro
+        // dominio e nunca sao afetados (T-03-03).
+        private bool IsNewerThanLastEvent(int senderId, uint seq)
+        {
+            uint last;
+            if (_lastEventSeq.TryGetValue(senderId, out last))
+            {
+                unchecked
+                {
+                    uint diff = seq - last;
+                    if ((int)diff <= 0)
+                    {
+                        return false;
+                    }
+                }
+            }
+            _lastEventSeq[senderId] = seq;
             return true;
         }
 

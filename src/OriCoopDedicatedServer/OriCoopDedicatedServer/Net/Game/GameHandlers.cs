@@ -56,6 +56,13 @@ namespace OriCoopDedicatedServer.Net.Game
         private readonly IGameTransport _transport;
         private readonly ILogger _log;
         private readonly PlayerStateRelay _relay = new PlayerStateRelay();
+        // Gate dedicado do dominio de eventos (PLAYER_EVENT 19): instancia
+        // separada do gate de snapshots (nunca o _relay compartilhado).
+        // Eventos tem contador proprio no envio (cliente NextEventSeq) e
+        // visto-por-remetente proprio aqui — rajadas de tiro nunca suprimem
+        // movimento e vice-versa (T-03-03, D-09 classe). Entradas morrem em
+        // OnSessionLeft para nao crescer sem limite.
+        private readonly EventRelayGate _eventRelay = new EventRelayGate();
         private readonly Dictionary<int, LastRemoteState> _lastKnown = new Dictionary<int, LastRemoteState>();
         private readonly HashSet<int> _unlockedAbilities = new HashSet<int>();
 
@@ -70,6 +77,47 @@ namespace OriCoopDedicatedServer.Net.Game
             public float SpeedX;
             public float SpeedY;
             public DateTime ReceivedAt;
+        }
+
+        /// <summary>
+        /// Gate unreliable do dominio de eventos (PLAYER_EVENT 19): drop-old
+        /// wrap-safe por remetente com visto proprio (dicionario interno),
+        /// disjunto do LastRecvSeq da sessao que o PlayerStateRelay usa para
+        /// snapshots. Mesma idioma de comparacao ((int)(nova - ultima) > 0).
+        /// </summary>
+        private sealed class EventRelayGate
+        {
+            private readonly Dictionary<int, uint> _lastSeen = new Dictionary<int, uint>();
+            private readonly object _gateSync = new object();
+
+            public bool ShouldRelay(int senderId, uint seq)
+            {
+                lock (_gateSync)
+                {
+                    uint last;
+                    if (_lastSeen.TryGetValue(senderId, out last))
+                    {
+                        unchecked
+                        {
+                            uint diff = seq - last;
+                            if ((int)diff <= 0)
+                            {
+                                return false;
+                            }
+                        }
+                    }
+                    _lastSeen[senderId] = seq;
+                    return true;
+                }
+            }
+
+            public void Forget(int senderId)
+            {
+                lock (_gateSync)
+                {
+                    _lastSeen.Remove(senderId);
+                }
+            }
         }
 
         public GameHandlers(
@@ -156,6 +204,7 @@ namespace OriCoopDedicatedServer.Net.Game
             {
                 _lastKnown.Remove(clientId);
             }
+            _eventRelay.Forget(clientId);
         }
 
         // ---- dispatch de pacotes de jogo (sessoes ja validadas pelo host) ----
@@ -232,12 +281,11 @@ namespace OriCoopDedicatedServer.Net.Game
 
         /// <summary>
         /// Evento de personagem (fase 3, piloto Spirit Flame, D-09): valida o
-        /// corpo minimo de 37 bytes + marcador 19, aplica o gate unreliable
-        /// compartilhado (drop-old wrap-safe por remetente) e reemite os
-        /// bytes originais do datagrama sem reconstrucao — clientId + seq do
-        /// remetente preservados, sem carimbo de fromId (identidade viaja no
-        /// header do envelope, D-11). Dominio de sequencia separado e escopo
-        /// do plano 02; no piloto o contador e o gate sao compartilhados.
+        /// corpo minimo de 37 bytes + marcador 19, aplica o gate dedicado de
+        /// eventos (drop-old wrap-safe por remetente, dominio disjunto do de
+        /// snapshots) e reemite os bytes originais do datagrama sem
+        /// reconstrucao — clientId + seq do remetente preservados, sem
+        /// carimbo de fromId (identidade viaja no header do envelope, D-11).
         /// </summary>
         public async Task HandlePlayerEventAsync(Session.Session sender, uint seq, byte[] payload, byte[] originalDatagram, CancellationToken ct)
         {
@@ -254,7 +302,7 @@ namespace OriCoopDedicatedServer.Net.Game
                 _log.Log(ServerLogLevel.Warning, "GAME", "PLAYER_EVENT truncado de " + sender.Id + " (drop)");
                 return;
             }
-            if (!_relay.ShouldRelay(sender, seq))
+            if (!_eventRelay.ShouldRelay(sender.Id, seq))
             {
                 return;
             }
