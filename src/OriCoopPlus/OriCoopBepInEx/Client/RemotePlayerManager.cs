@@ -66,8 +66,12 @@ namespace OriCoopBepInEx.Client
 
         // Rota de eventos do personagem (fase 3): mesma guarda de
         // HandleDirectState (sender invalido -> return), lazy-puppet na
-        // origem do disparo e delegacao ao PlayerEventCore. Nunca publica
-        // de volta (sem eco, D-07). Roda na main thread do Unity.
+        // origem do disparo via factory + SnapTo quando o remetente ainda
+        // nao tem puppet, e delegacao ao PlayerEventCore. Disciplina
+        // explicita de nunca-publicar (D-07): nenhum Publish/Core.Publish
+        // e alcançavel deste caminho — o receptor remoto jamais republica
+        // (sem eco). O corpo do evento nao carrega nick (D-11: identidade so
+        // no header); nicks chegam pelos snapshots. Roda na main thread.
         public void HandlePlayerEvent(int senderId, byte kind, SpiritFlameEventData data)
         {
             if (senderId < 0)
