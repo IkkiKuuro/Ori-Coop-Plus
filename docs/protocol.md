@@ -259,14 +259,23 @@ no corpo) e o relay reemite os bytes originais sem reconstrucao nem fusao —
 sem carimbo de `fromId` (diferente dos relays confiaveis `SKILL`/`SYNC_*`).
 Classe unreliable sequenciada (mesma do `PLAYER_STATE` 18, D-09): flags `0`,
 sem ACK, sem retry, fora da lista critica; drop-old wrap-safe por remetente
-nos dois lados. So o jogador local publica (filtro
+nos dois lados, em dominio de sequencia SEPARADO do de snapshots — contador
+proprio no envio (`NextEventSeq`), visto-proprio por remetente na recepcao
+do cliente (`IsNewerThanLastEvent`) e gate dedicado no relay do servidor
+(`EventRelayGate`, nunca o gate de snapshots): rajadas de tiro nunca
+suprimem movimento e vice-versa. Sem throttle no piloto: cada disparo envia
+na hora, spam livre (D-12; throttle so como follow-up com dado observado).
+So o jogador local publica (filtro
 `m_sein == Game.Characters.Sein` no patch); o receptor remoto nunca
 republica (sem eco) e evento de `kind` desconhecido mantem a ultima anim
 valida (fail-closed, sem fallback para Idle).
 
-> Reproducao visual remota (piloto: clipe de ataque no puppet) — a confirmar
-> em run com 2 clientes: linha `[EVENT] SpiritFlame detected` so no shooter,
-> clipe no puppet remoto, nenhuma linha no remoto.
+> Reproducao visual remota (piloto: clipe de ataque + particula do disparo
+> + som transiente + projetil fake em linha reta, tudo sem dano/colisao —
+> fisica real na fase de entidades, a confirmar) — a confirmar em run com 2
+> clientes: linha `[EVENT] SpiritFlame detected` so no shooter, clipe +
+> particula + som + projetil visual no puppet remoto, nenhuma linha no
+> remoto, movimento suave sob rajadas.
 
 ## Fragmentacao POSITION/ANIM (causa raiz do bug #2 — REMOVIDA)
 
