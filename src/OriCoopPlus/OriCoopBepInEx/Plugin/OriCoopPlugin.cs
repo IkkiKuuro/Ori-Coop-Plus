@@ -236,6 +236,10 @@ namespace OriCoopBepInEx.Plugin
         public void SetVerboseLogging(bool enabled)
         {
             ShowNetworkLogs = enabled;
+            if (_animVerbose != null)
+            {
+                _animVerbose.Value = enabled;
+            }
             Logger.LogInfo("Logs de rede verbosos: " + (enabled ? "LIGADO" : "DESLIGADO"));
         }
 

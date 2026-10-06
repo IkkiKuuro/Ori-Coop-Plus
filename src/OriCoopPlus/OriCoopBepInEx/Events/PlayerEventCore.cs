@@ -53,15 +53,13 @@ namespace OriCoopBepInEx.Events
                 OriCoopPlugin.LogWarning("[EVENT] PublishSpiritFlame falhou: " + ex.Message);
                 return;
             }
-            // Fase enviado (D-12): conta + registra no ring, verboso-gated
-            // como os logs de transicao de anim.
-            if (OriCoopPlugin.IsAnimVerbose())
-            {
-                string line = "[EVENT] kind=spiritflame fase=enviado";
-                ReplicationObservability.Record(line);
-                ReplicationObservability.TrackPlayerEvent(data.Kind, true);
-                OriCoopPlugin.LogInfo(line);
-            }
+            // Fase enviado (D-12, G-03-3): conta + registra no ring + LogInfo
+            // SEMPRE (fora de qualquer gate IsAnimVerbose) — shots sao
+            // eventos discretos, volume limitado pela taxa de disparo.
+            string sentLine = "[EVENT] kind=spiritflame fase=enviado";
+            ReplicationObservability.Record(sentLine);
+            ReplicationObservability.TrackPlayerEvent(data.Kind, true);
+            OriCoopPlugin.LogInfo(sentLine);
         }
 
         public static void DispatchLocal(int senderId, byte kind, SpiritFlameEventData data)
@@ -69,14 +67,11 @@ namespace OriCoopBepInEx.Events
             PlayerEventHandler handler;
             if (s_handlers.TryGetValue(kind, out handler) && handler != null)
             {
-                if (OriCoopPlugin.IsAnimVerbose())
-                {
-                    string line = string.Format("[EVENT] P{0} kind={1} fase=recebido",
-                        senderId, kind);
-                    ReplicationObservability.Record(line);
-                    ReplicationObservability.TrackPlayerEvent(kind, true);
-                    OriCoopPlugin.LogInfo(line);
-                }
+                string recvLine = string.Format("[EVENT] P{0} kind={1} fase=recebido",
+                    senderId, kind);
+                ReplicationObservability.Record(recvLine);
+                ReplicationObservability.TrackPlayerEvent(kind, true);
+                OriCoopPlugin.LogInfo(recvLine);
                 try
                 {
                     handler(senderId, data);
@@ -92,15 +87,13 @@ namespace OriCoopBepInEx.Events
                 return;
             }
             // Evento desconhecido: fail-closed (D-15) — mantem a ultima anim
-            // valida, so conta + registra o motivo quando verboso. Nunca publica.
-            if (OriCoopPlugin.IsAnimVerbose())
-            {
-                string line = string.Format("[EVENT] P{0} kind={1} aplicado=manteve-atual motivo=tipo-desconhecido",
-                    senderId, kind);
-                ReplicationObservability.Record(line);
-                ReplicationObservability.TrackPlayerEvent(kind, false);
-                OriCoopPlugin.LogInfo(line);
-            }
+            // valida, conta + registra + LogInfo SEMPRE (decidivel com
+            // config padrao, G-03-3). Nunca publica.
+            string unknownLine = string.Format("[EVENT] P{0} kind={1} aplicado=manteve-atual motivo=tipo-desconhecido",
+                senderId, kind);
+            ReplicationObservability.Record(unknownLine);
+            ReplicationObservability.TrackPlayerEvent(kind, false);
+            OriCoopPlugin.LogInfo(unknownLine);
         }
     }
 }
