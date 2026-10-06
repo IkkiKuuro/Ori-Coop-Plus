@@ -477,6 +477,37 @@ namespace OriCoopBepInEx.Client
                     }
                     catch { }
                 }
+
+                // Substring fallback estilo PlayerStateReader (G-03-1/G-03-2):
+                // o nome real do clipe de ataque do jogo nao esta na tabela
+                // SEED exata; Contains aim/throw resolve para AimThrow.
+                // So clipes do Sein (proveniencia acima), first-wins (nunca
+                // sobrescreve entrada calibrada via F8). Aplica a ambos os
+                // niveis outer/inner como a estrutura exata acima.
+                if (!s_stateClips.ContainsKey(ActionVisualState.AimThrow))
+                {
+                    try
+                    {
+                        string outerLower = clip.name != null ? clip.name.ToLower() : string.Empty;
+                        bool outerMatch = outerLower.Contains("aim") || outerLower.Contains("throw");
+                        string innerLower = string.Empty;
+                        try
+                        {
+                            TextureAnimation innerForSub = clip.Animation;
+                            if (innerForSub != null && !string.IsNullOrEmpty(innerForSub.name))
+                            {
+                                innerLower = innerForSub.name.ToLower();
+                            }
+                        }
+                        catch { }
+                        bool innerMatch = innerLower.Contains("aim") || innerLower.Contains("throw");
+                        if ((outerMatch || innerMatch) && !s_stateClips.ContainsKey(ActionVisualState.AimThrow))
+                        {
+                            s_stateClips[ActionVisualState.AimThrow] = clip;
+                        }
+                    }
+                    catch { }
+                }
             }
         }
 
