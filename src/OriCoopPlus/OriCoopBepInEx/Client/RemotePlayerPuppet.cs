@@ -416,6 +416,17 @@ namespace OriCoopBepInEx.Client
             }
 
             TextureAnimationWithTransitions clip;
+            // Efeitos primeiro, sempre (G-03-1/G-03-2, D-13): particula +
+            // som + fake independem do resolve do clipe — cada spawn ja e
+            // individualmente try/catch-guardado. O clipe abaixo e
+            // best-effort e NUNCA suprime os efeitos.
+            try { SpawnMuzzleParticle(origin); }
+            catch { }
+            try { PlayTransientShotSound(origin); }
+            catch { }
+            try { SpawnFakeProjectile(origin, direction); }
+            catch { }
+
             if (!AnimationRegistry.TryResolveState(ActionVisualState.AimThrow, out clip) || clip == null)
             {
                 try
@@ -428,11 +439,13 @@ namespace OriCoopBepInEx.Client
 
             if (clip == null)
             {
-                if (OriCoopPlugin.IsAnimVerbose())
-                {
-                    OriCoopPlugin.LogInfo(string.Format("[EVENT] P{0} kind=spiritflame aplicado=manteve-atual motivo=clip-desconhecido",
-                        PlayerId));
-                }
+                // Clip desconhecido: log-and-continue SEMPRE visivel
+                // (fora de qualquer gate IsAnimVerbose) + mantem a ultima
+                // anim (fail-closed D-15: sem SetAnimation, sem Idle).
+                string missLine = string.Format("[EVENT] P{0} kind=spiritflame aplicado=manteve-atual motivo=clip-desconhecido",
+                    PlayerId);
+                ReplicationObservability.Record(missLine);
+                OriCoopPlugin.LogInfo(missLine);
                 return;
             }
 
@@ -440,18 +453,10 @@ namespace OriCoopBepInEx.Client
             {
                 _animator.SetAnimation(clip, true);
             }
-            if (OriCoopPlugin.IsAnimVerbose())
-            {
-                OriCoopPlugin.LogInfo(string.Format("[EVENT] P{0} kind=spiritflame aplicado={1} motivo=recebido",
-                    PlayerId, clip.name));
-            }
-
-            try { SpawnMuzzleParticle(origin); }
-            catch { }
-            try { PlayTransientShotSound(origin); }
-            catch { }
-            try { SpawnFakeProjectile(origin, direction); }
-            catch { }
+            string appliedLine = string.Format("[EVENT] P{0} kind=spiritflame aplicado={1} motivo=recebido",
+                PlayerId, clip.name);
+            ReplicationObservability.Record(appliedLine);
+            OriCoopPlugin.LogInfo(appliedLine);
         }
 
         // Particula do disparo: clone visual-only de um sistema do Sein
