@@ -47,10 +47,17 @@ result: pass
 
 total: 6
 passed: 3
-issues: 3
+issues: 5
 pending: 0
 skipped: 0
 blocked: 0
+
+## Re-test (gap fixes 03-04 deployed, DLL 100864B size+timestamp matched)
+
+Deployed build verified current (build output == Ori DE plugin dir, 100864B, same timestamp) — failures below are real code issues, not a stale deploy.
+- DELIVERY CONFIRMED: P2 log shows `fase=recebido` per shot, `EvRecv/EvApplied` moving (7/7, 5/5), `EvDropped: 0`. G-03-3 delivery half resolved; shooter-side no-echo check still pending.
+- CLIP STILL UNKNOWN: `aplicado=manteve-atual motivo=clip-desconhecido` on every received event despite T2 substring fallback → real attack-clip name still unmatched.
+- NOTHING RENDERS despite T1 clip-independence → effect spawn path itself broken/invisible, and `EvApplied` increments without any visible effect (counter semantics suspect).
 
 ## Gaps
 
@@ -103,4 +110,32 @@ blocked: 0
     - "Ungate EVENT transition lines + TrackPlayerEvent counters (or honor ShowNetworkLogs in the gate)"
     - "Fix SetVerboseLogging to also set _animVerbose so the in-game toggle works"
     - "Discriminating check: AnimVerbose=true in cfg on both clients should show fase=recebido on remote (delivery works) + motivo=clip-desconhecido (gate P1 confirmed)"
+  retest_2026_10_06: "DELIVERY CONFIRMED by P2 log (fase=recebido per shot, EvRecv/EvApplied moving, EvDropped 0) — observability half resolved. Kept open pending shooter-side log proving enviado-only / never recebido-aplicado on own shots."
+  debug_session: .planning/debug/player-event-delivery.md
+- gap_id: G-03-4
+  truth: "Puppet remoto resolve o clipe de ataque do Spirit Flame (sem motivo=clip-desconhecido)"
+  status: failed
+  reason: "User evidence (re-test after 03-04): toda linha recebido vem com aplicado=manteve-atual motivo=clip-desconhecido — fallback substring de T2 nao cobre o nome real do clipe de ataque"
+  severity: major
+  test: 1
+  root_cause: "Undiagnosed — needs investigation: real attack-clip name unknown; AnimationRegistry substring fallback (aim/throw) still misses. Either the clip has an unrelated name (needs F8 DumpCatalog on live client) or the lookup runs against the wrong collection"
+  artifacts:
+    - path: "src/OriCoopPlus/OriCoopBepInEx/Client/AnimationRegistry.cs"
+      issue: "AimThrow alias population still misses despite substring fallback"
+  missing:
+    - "Pin the real attack-clip name via F8 DumpCatalog during live play, or broaden matching"
+  debug_session: .planning/debug/player-event-delivery.md
+- gap_id: G-03-5
+  truth: "Particula + som + projetil falso do Spirit Flame renderizam no puppet remoto mesmo sem clipe resolvido"
+  status: failed
+  reason: "User evidence (re-test after 03-04): nada aparece pra ninguem apesar de T1 (efeitos independentes do clipe); EvApplied incrementa sem efeito visivel"
+  severity: blocker
+  test: 1
+  root_cause: "Undiagnosed — needs investigation: candidate causes are null particle prefab/sound clip on the puppet path, spawn at wrong position/layer, exception swallowed in the effect path, or whitelist stripping the spawned objects. EvApplied counting non-rendered events suggests counter semantics also wrong"
+  artifacts:
+    - path: "src/OriCoopPlus/OriCoopBepInEx/Client/RemotePlayerPuppet.cs"
+      issue: "PlaySpiritFlameVisual effect path produces no visible output despite independence reorder"
+  missing:
+    - "Trace the effect spawn path: null-check particle/sound assets, verify spawn transform, check for swallowed exceptions, verify whitelist survival"
+    - "Fix EvApplied semantics (should count rendered effects, not received events)"
   debug_session: .planning/debug/player-event-delivery.md
