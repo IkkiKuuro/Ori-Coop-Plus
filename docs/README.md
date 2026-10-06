@@ -26,6 +26,9 @@ para outros jogos.
   reversa do `PauseScreen`, injeção de botões e gerenciamento de navegação.
 - Consulte [arquitetura](architecture.md) para a separação do
   `OriCoopDedicatedServer` e a ausência de dependência do WW.
+- Consulte [contexto do core de eventos](player-event-core-CONTEXT.md) para as
+  decisões travadas da fase 3 (core + piloto Spirit Flame, fatiamento por
+  categoria, transporte unreliable com ID novo, projétil fake agora).
 - Consulte [contexto da sincronia de animações](anim-sync-CONTEXT.md) para as
   decisões travadas do rework de anims (inventário, pacote novo, histerese,
   diagnóstico).
