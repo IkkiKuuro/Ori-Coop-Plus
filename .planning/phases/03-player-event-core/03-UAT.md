@@ -1,5 +1,5 @@
 ---
-status: testing
+status: complete
 phase: 03-player-event-core
 source: [03-VERIFICATION.md]
 started: 2026-10-06
@@ -8,11 +8,7 @@ updated: 2026-10-06
 
 ## Current Test
 
-number: 6
-name: C6 - desconexao/reconexao limpa
-expected: |
-  Puppet some e respawna no lugar certo; eventos voltam a replicar sem reiniciar o servidor
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -45,14 +41,14 @@ result: pass
 
 ### 6. C6 - desconexao/reconexao limpa
 expected: Puppet some e respawna no lugar certo; eventos voltam a replicar sem reiniciar o servidor
-result: [pending]
+result: pass
 
 ## Summary
 
 total: 6
-passed: 2
+passed: 3
 issues: 3
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 
