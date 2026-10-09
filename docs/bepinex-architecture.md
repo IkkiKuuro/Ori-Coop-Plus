@@ -69,10 +69,11 @@ Plugin/OriCoopPlugin
 - **Patches:**
   - `SeinCharacterPatch`: Captura `transform.position`, `Speed`, `FaceLeft` e
     `CurrentAnimation.name` via tipagem direta de `SeinCharacter`, filtrando estritamente
-    para o jogador local (`__instance == Game.Characters.Sein`). A proteção dos singletons
-    `Game.Characters.Sein` e `Current` é realizada na origem pela desativação transitória de
-    `sein` durante a instanciação em `RemotePuppetFactory`, garantindo que clones inativos
-    nunca disparem `Awake()` nem interfiram no `Awake()` legítimo do `Sein(Clone)` local ao abrir o save.
+    para o jogador local (`__instance == Game.Characters.Sein`). O puppet leve
+    atual (ver `Client` acima) clona só a subárvore visual e nunca toca nos
+    singletons, então não há desativação transitória nem `try/finally` de
+    preservação na clonagem (mantido só `EnsureCameraFollowsLocalPlayer()`
+    como segurança).
   - `FrustumCullingBypassPatch`: Intercepta `CameraFrustumOptimizer.ProcessFrustumOptimizable`
     e ignora o culling caso o componente pertença a uma entidade remota.
   - `AnimationPrewarmPatch`: Dispara `AnimationRegistry.Prewarm()` assim que o

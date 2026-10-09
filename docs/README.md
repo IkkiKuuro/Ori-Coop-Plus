@@ -63,8 +63,11 @@ marcado como **a confirmar** em vez de ser apresentado como garantia.
 | `MG` | Music Game | Catalogado |
 | `CUBICS` | Cubics | Catalogado |
 
-Os numeros de modulos e o estado de funcionamento podem mudar; mantenha esta
-tabela sincronizada com `AllGames.txt`, `AllMods.txt` e `WWGames.txt`.
+Os numeros de modulos e o estado de funcionamento podem mudar. Cada arquivo
+tem um papel diferente (nao precisam ser identicos):
+`AllGames.txt` = jogos reconhecidos, `AllMods.txt` = modulos,
+`WWGames.txt` = status adicional de catalogo. Mantenha a tabela abaixo
+sincronizada com o conjunto dos tres.
 
 ## Manutencao da documentacao
 

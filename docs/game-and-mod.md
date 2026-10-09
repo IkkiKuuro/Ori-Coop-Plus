@@ -44,29 +44,32 @@ As opcoes sao controladas pelo servidor e enviadas para os clientes:
 - **Nomes**: habilita floating name tags dos jogadores.
 - **Client colors**: alterna cores personalizadas no servidor.
 - **Entity sync**: alterna a sincronizacao de entidades adicionais e entrega
-  o estado ao cliente pela variavel de rede `ES`; a cobertura concreta de
+  o estado ao cliente pelo oitavo bool do `CONFIG_SYNC` 16 (antes via
+  variavel de rede `ES` do pacote `-3`, removido — ver `protocol.md`);
+  a cobertura concreta de
   inimigos e objetos do mundo ainda esta **a confirmar**.
 
-Todas as opcoes cooperativas sao inicializadas desligadas em
-`ORIDEServerModule.OnEnable`. Isso e intencional para evitar que um servidor
-novo altere o estado da partida sem uma escolha explicita do operador.
+Todas as opcoes cooperativas seguem os padroes de `ConfigStore`
+(`serverconfig.json`): `AllowTeleport=true`, demais `false`.
+O `ORIDEServerModule.OnEnable` legado (que zerava tudo) foi removido do
+repositorio em 2026-10-05; nao usar como referencia.
 
 ## Configuracao local
 
-O cliente grava `MPSettings.json` na pasta raiz do jogo. O formato observado e:
+O cliente BepInEx grava `com.ikkikuuro.oricoop.cfg` em
+`<ORI_DIR>\BepInEx\config` (plugin `com.ikkikuuro.oricoop`). O formato observado e:
 
-```json
-{
-  "LocalColor": "...",
-  "NickName": "Ori_123",
-  "ServerIP": "127.0.0.1",
-  "ServerPort": 7777,
-  "AutoConnect": true
-}
+```ini
+[Network]
+Host = 127.0.0.1
+Port = 7777
+PlayerId = -1
+Nickname = Ori_Player
 ```
 
-`LocalColor` e serializado pelo `JsonUtility` do Unity. O valor concreto pode
-variar conforme a versao do Unity; nao edite esse campo manualmente sem testar.
+O `MPSettings.json` legado na raiz do jogo nao e mais usado; nao usar como
+referencia. `ServerHandle` legado tambem foi removido com o Core em
+2026-10-05; o fluxo atual esta em `NetworkService` + `Net/Game/GameHandlers`.
 
 ## Limites conhecidos
 

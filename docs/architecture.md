@@ -15,7 +15,7 @@ OriDE.exe
 OriCoopDedicatedServer.exe (novo core, sem dependencias externas)
   └─ Net/
        ├─ Transport (EnvelopeCodec 24B + UdpTransport com Channel)
-       ├─ Session (SessionManager: token, endpoint fixo, sweeper 10 s)
+       ├─ Session (SessionManager: token, endpoint fixo, timer 1 s / timeout 10 s)
        ├─ Game (ServerBoot, GameHandlers, ConfigStore, DummyBot, Commands)
        └─ Diagnostics (FileConsoleLogger: console + Logs/server.log)
 ```
