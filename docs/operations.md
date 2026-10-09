@@ -650,3 +650,9 @@ rodar e anotar aqui data, bytes da DLL e pass/fail por check (C1–C6).
 - OriCoopDedicatedServer.csproj: removido Compile Remove Game/**, comentario atualizado.
 - Teste: dotnet build OriCoopPlus.sln -c Release => 0 aviso, 0 erro.
 - Deploy: OriCoopBepInEx.dll (84.480B) em D:\...\Ori DE\BepInEx\plugins\, servidor (dll 104.448B+exe+deps+runtimeconfig+pdb) em D:\...\Ori DE\Server\, OriCoopDedicatedServer.Core.dll/.pdb removidos de la.
+
+## 2026-10-09 — Crash no boot por entrypoint padrao do BepInEx (instalacao D:)
+- Sintoma: `OriDE.exe` crasha segundos apos abrir, gerando pastas `2026-10-09_152606/` (e `152626/`) com `error.log` (`Access Violation 0xc0000005` em `mono.dll`, leitura de `00000294`) e `output_log.txt` parando em `Loading [Ori Coop 0.1.0]` + `Crash!!!`.
+- Causa: `BepInEx\config\BepInEx.cfg` da instalacao D: ainda tinha o entrypoint padrao (`UnityEngine.dll` / `Application` / `.cctor`). O stack do crash mostra `Chainloader:Start()` chamado de `Application:.cctor()` e quebrando em `GameObject:AddComponent` dentro de `mono_class_from_name`/`mono_method_verify` — entrypoint prematuro no Unity 5.3.2f1, antes do `Assembly-CSharp.dll` ser indexado (mesmo caso ja documentado na tabela de diagnostico).
+- Correcao aplicada (sem rebuild): `[Preloader.Entrypoint]` => `Assembly = Assembly-CSharp.dll`, `Type = LoadingBootstrap`, `Method = Awake` (tipo/metodo confirmados via Cecil no `Assembly-CSharp.dll` do jogo); caches `BepInEx\cache\*.dat` apagados. DLL do mod intacta (refs mscorlib 2.0/System 2.0/System.Core 3.5/BepInEx 5.4.21/0Harmony 2.9.0.0, sem TargetFramework) e `Managed\UnityEngine.dll` vanilla (967.680 bytes) — sem resquicio de WWClient/UnityExplorer.
+- A confirmar: reabrir o jogo e checar `BepInEx\LogOutput.log` com `Ori Coop BepInEx plugin loaded.` e a secao `[Network]` em `com.ikkikuuro.oricoop.cfg`.
