@@ -117,6 +117,8 @@ OriCoopMenuScreen (MenuScreen, filho de InventoryManager)
 ## 5. Resolução dos Problemas Conhecidos e Nova Interface de Conexão
 
 ### 5.1 Resolução do Bug 1: Falta de foco/interatividade e despausa indevida
+(Correção aplicada no código; validação em jogo com gamepad + teclado ainda
+**a confirmar** — ver `operations.md` § Itens ainda a confirmar.)
 - **Causas Raiz Identificadas:**
   1. **Suspensão pelo `SuspensionManager`:** Ao instanciar `OriCoopMenuScreen` como raiz (`new GameObject("OriCoopMenuScreen")`), o `CleverMenuItemSelectionManager` se registrava no `SuspensionManager`. Durante a pausa do jogo, o `MenuScreenManager` chamava `SuspensionManager.SuspendExcluding(...)` apenas para componentes filhos de sua própria hierarquia, marcando `_navManager.IsSuspended = true`. Na IL de `CleverMenuItemSelectionManager.FixedUpdate()`, o método aborta na instrução `IL_0001: if (IsSuspended) return;`.
   2. **Flag `IsActive`:** `m_isActive` inicializa como `false` por padrão. A instrução `IL_0164: if (!IsActive) return;` abortava a verificação de D-Pad, analógico e botões de ação caso `IsActive` não fosse explicitamente ligado.

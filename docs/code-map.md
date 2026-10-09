@@ -18,7 +18,7 @@
 | --- | --- |
 | `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Program.cs` | argumentos e ciclo de vida (sempre `ServerBoot`; `--net2` aceito como no-op) |
 | `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Net/Transport/` | `EnvelopeCodec` (header 24B `0x4F43`/v2) + `UdpTransport` (receive com `Channel`) |
-| `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Net/Session/` | `SessionManager` (token, endpoint fixo, allocator, sweeper 10 s) + `Session` |
+| `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Net/Session/` | `SessionManager` (token, endpoint fixo, allocator, timer 1 s / timeout 10 s) + `Session` |
 | `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Net/Reliability/` | `AckTracker` (SysAck 103 + retry 250 ms x3 dos criticos) |
 | `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Net/Game/` | `ServerBoot`, `GameHandlers`, `ConfigStore` (`serverconfig.json`), `DummyBot`, `PlayerStateRelay` |
 | `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Net/Game/Commands/` | `ConsoleCommand` + `CommandRegistry` + `OriCommands` (`coop`/`tp`/`dummy`/`clientcolors`/`entitysync`/`help`/`stop`) |

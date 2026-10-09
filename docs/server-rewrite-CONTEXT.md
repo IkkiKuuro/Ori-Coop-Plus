@@ -33,6 +33,10 @@ submenu de pause) — essas pertencem a outras fases.
   (`uint32`) + `clientId` + `packetId` + payload — **Reversibility:** one-way —
   builds antigos deixam de interoperar; o servidor recusa envelope sem
   magic/versão com mensagem clara.
+  > Nota de supersessão (build atual): o envelope final tem 24B com 8 campos
+  > (`magic, versao, flags, seq, clientId, token, packetId, ackSeq`) — ver
+  > `docs/protocol.md` § Envelope versionado. Este D-02 registra a decisão
+  > inicial, não o layout final.
 - **D-03:** Serialização com `BinaryPrimitives` + `Spans`, little-endian
   explícito, validação de `length` antes de cada leitura (nunca ler além do
   `UnreadLength`).

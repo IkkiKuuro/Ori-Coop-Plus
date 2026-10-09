@@ -14,7 +14,7 @@ Execute os comandos a partir da raiz do repositorio. Se o repositorio estiver
 no caminho padrão deste ambiente:
 
 ```powershell
-Set-Location 'C:\Users\irani\OneDrive\Documentos\GitHub\WW_Launcher'
+Set-Location 'C:\Users\irani\OneDrive\Documentos\GitHub\Ori-Coop-Plus'
 ```
 
 Depois, na raiz do repositorio:
@@ -250,9 +250,13 @@ O jogador se conecta exclusivamente ao executável
 
 ## Comandos do mod
 
+No console do servidor digite sem `/` (`coop`, `tp`, ...). No chat do jogo
+use com `/` (`/coop`, `/tp`, ...). `help`/`h` via chat responde em unicast
+ao solicitante.
+
 | Comando | Funcao |
 | --- | --- |
-| `/coop` | mostra/configura `tp`, `abilities`, `story`, `world`, `doors` e `names` |
+| `/coop` | mostra/configura `tp`, `abilities`, `story`, `world`, `doors` e `names`; aliases de console `coopconfig`, `config`, `cfg` |
 | `/tp <origem> <destino>` | teleporta a origem ate o destino; alias `/teleport`; com log de diagnóstico no cliente (`Teleporte recebido/aplicado/fixado`) |
 | `/help` | lista os comandos; aliases `h`, `ajuda`, `?` (via chat, responde em unicast ao solicitante) |
 | `/stop` | encerra o servidor; aliases `quit`, `exit`, `sair` |
@@ -612,12 +616,17 @@ rodar e anotar aqui data, bytes da DLL e pass/fail por check (C1–C6).
 
 ## Itens ainda a confirmar e Bugs Conhecidos
 
-- [Bug] Falta de foco/interatividade no submenu nativo de pausa `OriCoopMenuScreen` (solucao alternativa funcional implementada via dialogo F6 `ServerConnectionDialog`);
+- [Bug] Foco/interatividade do submenu nativo `OriCoopMenuScreen`: correcao
+  aplicada no codigo (filho do `InventoryManager`, `IsSuspended=false`/
+  `IsActive=true`, botoes clonados sem `Condition`, sem `SetVisible(false)` —
+  ver `native-ui-architecture.md` §5.1/5.3); validacao em jogo com gamepad +
+  teclado ainda **a confirmar**. Alternativa funcional: dialogo F6
+  `ServerConnectionDialog`;
 - comportamento de `AutoConnect` em todas as cenas;
-- persistencia das opcoes do servidor entre reinicios (o codigo atual as redefine ao carregar o modulo);
 - matriz de compatibilidade entre versoes do Ori, Unity e assemblies;
 - cobertura real de sincronizacao de inimigos e entidades em partidas longas;
-- descoberta automatica de servidores na LAN (atualmente o IPv4 e configurado manualmente).
+- jogo pela internet (port-forward/NAT) — ainda nao validado; LAN usa IPv4
+  manual ou `Buscar LAN` (sonda Hello versionada) no dialogo F6.
 
 
 ## 2026-10-05 — Remocao do Core legado

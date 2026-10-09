@@ -73,11 +73,11 @@ O evento visual de Spirit Flame é detectado pelo patch de
 Não existe, neste repositório, uma tabela com os nomes concretos dos inimigos
 ou bosses aceitos por essas interfaces.
 
-Evidências:
+Evidências (classes MP legadas citadas pelo vocabulario; fluxo novo do piloto
+em `Patches/SpiritFlamePatch.cs` + `Events/PlayerEventCore.cs`):
 
-- `src/OriCoopPlus/OriCoopBepInEx/Patches/`
-- `src/OriCoopPlus/OriCoopBepInEx/Patches/`
-- `src/OriCoopPlus/OriCoopBepInEx/Patches/`
+- `src/OriCoopPlus/OriCoopBepInEx/Patches/SpiritFlamePatch.cs`
+- `src/OriCoopPlus/OriCoopBepInEx/Events/PlayerEventCore.cs`
 
 ## Teleportes
 
@@ -104,8 +104,7 @@ até que sejam identificados nas assemblies ou em teste.
 Evidências:
 
 - `src/OriCoopPlus/OriCoopBepInEx/Plugin/OriCoopPlugin.cs`
-- `src/OriCoopPlus/OriCoopBepInEx/Plugin/OriCoopPlugin.cs`
-- `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Game/Commands/TeleportCmd.cs`
+- `src/OriCoopDedicatedServer/OriCoopDedicatedServer/Net/Game/Commands/OriCommands.cs` (`TeleportCommand`)
 - `src/OriCoopPlus/OriCoopShared/CoopConfig.cs`
 
 ## Inimigos e bosses
@@ -128,7 +127,8 @@ vida, morte, fases, padrões de ataque, drops ou arena.
 
 ### Entidades Unity genéricas — Reconhecido / A confirmar
 
-Quando a variável de rede `ES` está habilitada, `EntityController.Awake`
+Quando o oitavo bool do `CONFIG_SYNC` 16 (`EntitySync`, antes variavel `ES`
+do pacote `-3` removido) está habilitado, `EntityController.Awake`
 procura uma entidade com um objeto de sprite e registra o controlador em
 `EntitySync`. O pacote de entidade contém apenas:
 
@@ -140,10 +140,9 @@ Esse fluxo pode cobrir entidades animadas, mas não define que elas são
 inimigos ou bosses e não sincroniza explicitamente dano, morte ou estado de
 combate. A confirmação deve ser feita em jogo com `EntitySync` ativado.
 
-Evidências:
+Evidências (fluxo legado de entidades; cobertura real **a confirmar**):
 
-- `src/OriCoopPlus/OriCoopBepInEx/Patches/`
-- `src/OriCoopPlus/OriCoopBepInEx/Patches/`
+- `src/OriCoopPlus/OriCoopBepInEx/Patches/` (varredura `EntityController`/`EntitySync`)
 
 ## Pickups e progresso
 
@@ -197,10 +196,9 @@ handler específico para objetos destrutíveis neste código. Breakables devem
 ser considerados **não implementados** até que o fluxo seja encontrado ou
 criado.
 
-Evidências:
+Evidências (fluxo de portas/alavancas/mundo; breakable sem fluxo):
 
-- `src/OriCoopPlus/OriCoopBepInEx/Patches/`
-- `src/OriCoopPlus/OriCoopBepInEx/Patches/`
+- `src/OriCoopPlus/OriCoopBepInEx/Patches/` (varredura `Lever`/`DoorWithSlots`/`SetWorldEventAction`)
 - `src/OriCoopPlus/OriCoopShared/PacketType.cs`
 
 ## Lacunas para a próxima etapa
