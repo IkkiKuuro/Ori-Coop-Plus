@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Security.Cryptography;
 
@@ -10,6 +11,9 @@ namespace OriCoopDedicatedServer.Net.Session
     /// </summary>
     public sealed class Session
     {
+        private readonly object _relSync = new object();
+        private readonly HashSet<uint> _seenReliable = new HashSet<uint>();
+
         public int Id { get; set; }
 
         public IPEndPoint EndPoint { get; set; }
@@ -22,14 +26,13 @@ namespace OriCoopDedicatedServer.Net.Session
 
         public uint LastRecvSeq { get; set; }
 
-        public uint LastSentSeq { get; set; }
-
         /// <summary>
-        /// Contador de varreduras do sweeper sem datagrama (D-07). Com o
-        /// sweeper atual baseado em tempo (LastSeenUtc vs 10 s), permanece
-        /// em zero; preservado para diagnostico futuro.
+        /// Ultimo Confirm processado (dedup de retry: mesmo seq nao
+        /// re-dispara o join). Separado do LastRecvSeq, que avancacom snapshots.
         /// </summary>
-        public int MissedSweeps { get; set; }
+        public uint LastConfirmSeq { get; set; }
+
+        public bool ConfirmSeen { get; set; }
 
         public string Nickname { get; set; }
 
@@ -38,6 +41,35 @@ namespace OriCoopDedicatedServer.Net.Session
             EndPoint = new IPEndPoint(IPAddress.Loopback, 0);
             Nickname = string.Empty;
             LastSeenUtc = DateTime.UtcNow;
+        }
+
+        /// <summary>
+        /// Dedup de pacotes confiaveis (retry do cliente reenvia a mesma
+        /// seq): true = duplicata ja processada (descartar sem re-executar;
+        /// o SysAck ja foi enviado no dispatch). ACKs sao enviados antes do
+        /// dispatch, entao o retry sempre recebe ACK mesmo descartado aqui.
+        /// Janela de ~256 seqs: retry valido chega em &lt;1 s, bem antes de
+        /// 256 pacotes novos; limpeza total e segura.
+        /// </summary>
+        public bool IsDuplicateReliable(uint seq)
+        {
+            lock (_relSync)
+            {
+                return _seenReliable.Contains(seq);
+            }
+        }
+
+        public void MarkReliableProcessed(uint seq)
+        {
+            lock (_relSync)
+            {
+                _seenReliable.Add(seq);
+                if (_seenReliable.Count > 256)
+                {
+                    _seenReliable.Clear();
+                    _seenReliable.Add(seq);
+                }
+            }
         }
 
         public static uint NewToken()

@@ -159,20 +159,16 @@ namespace OriCoopDedicatedServer.Net.Game
 
         public async Task OnPlayerJoinAsync(Session.Session session, CancellationToken ct)
         {
-            if (!_config.ClientColors)
-            {
-                byte[] rgb = _config.GetOrCreateColor(session.Id);
-                byte[] colorPayload = new byte[7];
-                BinaryPrimitives.WriteInt32LittleEndian(colorPayload.AsSpan(0, 4), (int)PacketType.COLOR);
-                colorPayload[4] = rgb[0];
-                colorPayload[5] = rgb[1];
-                colorPayload[6] = rgb[2];
-                await _transport.UnicastReliableAsync(session, (int)PacketType.COLOR, colorPayload, ct).ConfigureAwait(false);
-            }
-            else
-            {
-                _log.Log(ServerLogLevel.Info, "GAME", "Cliente " + session.Id + " entrou; aguardando cor do cliente...");
-            }
+            // Cor inicial sempre enviada (fallback do servidor). Com
+            // ClientColors ligado o cliente pode sobrescrever com a sua via
+            // COLOR 6; sem ela o jogador ficava sem cor ate mandar a propria.
+            byte[] rgb = _config.GetOrCreateColor(session.Id);
+            byte[] colorPayload = new byte[7];
+            BinaryPrimitives.WriteInt32LittleEndian(colorPayload.AsSpan(0, 4), (int)PacketType.COLOR);
+            colorPayload[4] = rgb[0];
+            colorPayload[5] = rgb[1];
+            colorPayload[6] = rgb[2];
+            await _transport.UnicastReliableAsync(session, (int)PacketType.COLOR, colorPayload, ct).ConfigureAwait(false);
 
             await _transport.UnicastReliableAsync(session, (int)PacketType.CONFIG_SYNC, _config.BuildConfigPayload(), ct).ConfigureAwait(false);
 

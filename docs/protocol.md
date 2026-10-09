@@ -124,6 +124,12 @@ Nick vazio vira `Player_<id>`. IDs incrementais nunca reutilizados no run;
 `0` (servidor) e `999` (dummy) nunca sao alocados. Servidor cheio
 (`count >= MaxPlayers`) recusa o `Hello` com `Reject`.
 Reconectar exige novo `Hello` com novo ID; o ID antigo nunca e reaproveitado.
+Retry do mesmo `Hello` (endpoint com sessao ainda nao-confirmada) devolve o
+mesmo `Welcome`; reconnect do mesmo endpoint com sessao `IsReady` remove a
+sessao antiga, aloca ID novo e difunde `DISCONNECT` do ID antigo. Retry do
+mesmo `Confirm` (mesma `seq`) nao re-dispara o join (sem `COLOR`/`CONFIG`
+duplicados). `Hello` com throttle de 500 ms por endpoint; pendentes sem
+`Confirm` expiram em 5 s (sem broadcast).
 
 ### Confiabilidade e sessao (hardening 02-02)
 
@@ -137,6 +143,10 @@ datagrama original acontece a cada 250 ms ate 3 tentativas (`AckRetryMs` /
 loga `Warning` com sessao e `seq` e desiste sem derrubar a sessao. ACK
 piggybacked (`AckPresent` `0x02` + `ackSeq` no header) vale como `SysAck`.
 `PLAYER_STATE` 18, `PLAYER_EVENT` 19 e `Ping` 104 nunca geram pendencia (unreliable, sem retry).
+
+Dedup de retry confiavel: o servidor responde `SysAck` antes do dispatch e
+descarta a duplicata (mesma `seq` do remetente) sem re-executar — sem chat,
+teleporte ou `SYNC_*` duplos. Janela de ~256 seqs por sessao.
 
 Espelho no cliente (cutover 02-04, `NetworkService.cs`): o cliente responde
 `SysAck` 103 imediato a todo datagrama `Reliable` (inclui `CONFIG_SYNC` e
@@ -171,6 +181,7 @@ demais) mantem o corpo byte-identico ao formato anterior, incluindo o
 `int` inicial com o proprio ID (ex. `18`) e a ordem de campos atual — o
 `playerId` do remetente viaja no `clientId` do header e o relay reemite os
 bytes originais sem reconstrucao. Strings continuam `int32 length` + ASCII.
+Lixo sem envelope recebe `Reject` com throttle (1 por endpoint a cada 2 s).
 
 ## Configuracao distribuida
 
@@ -192,7 +203,9 @@ Os 6 primeiros preservam ordem e significado; os 2 novos vao ao final. Corpo
 com marcador: `int 16` + 8 bools. O servidor e autoridade: transmite
 `CONFIG_SYNC` confiavel (ACK + retry) em unicast a cada `Confirm` e em
 broadcast a cada mudanca via comando; persiste em `serverconfig.json` ao lado
-do exe (nunca zera no boot). O cliente BepInEx le os 8 com leitura tolerante
+do exe (nunca zera no boot). No join o servidor sempre envia `COLOR` inicial
+(fallback; com `ClientColors` ligado o cliente pode sobrescrever com a sua).
+O cliente BepInEx le os 8 com leitura tolerante
 (bytes ausentes viram `false`), dispara `ConfigSyncReceived` com os 8 valores
 e espelha o oitavo em `EntitySyncChanged`.
 

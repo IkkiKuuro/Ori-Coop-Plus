@@ -120,16 +120,49 @@ namespace OriCoopDedicatedServer.Net.Session
         }
 
         /// <summary>
+        /// Remove sessoes nao-confirmadas (Hello sem Confirm) silenciosas ha
+        /// mais de <paramref name="timeoutMs"/> ms. Nao ha broadcast: ninguem
+        /// foi avisado desse join. Anti-flood de Hello (slots pendentes).
+        /// </summary>
+        public List<Session> SweepUnconfirmedExpired(int timeoutMs)
+        {
+            var removed = new List<Session>();
+            DateTime now = DateTime.UtcNow;
+            foreach (KeyValuePair<int, Session> pair in _sessions)
+            {
+                Session candidate = pair.Value;
+                if (candidate == null || candidate.IsReady)
+                {
+                    continue;
+                }
+                if ((now - candidate.LastSeenUtc).TotalMilliseconds > timeoutMs)
+                {
+                    Session taken;
+                    if (_sessions.TryRemove(pair.Key, out taken) && taken != null)
+                    {
+                        removed.Add(taken);
+                    }
+                }
+            }
+            return removed;
+        }
+
+        /// <summary>
         /// Hello: clientId deve ser -1 e token 0; payload = protoVer byte + nick
         /// (int32-length + ASCII, fallback Player_ID quando vazio). Retorna a
         /// sessao criada (ou existente para o mesmo endpoint) e o payload do
         /// Welcome (assignedId int + token uint + serverVer byte).
+        /// Reconnect (endpoint com sessao IsReady): remove a sessao antiga e
+        /// aloca ID novo (IDs nunca reutilizados); o host avisa os demais com
+        /// DISCONNECT do ID antigo via <paramref name="replacedId"/> (0 = nada).
+        /// Retry (endpoint com sessao pendente, sem Confirm): devolve a mesma.
         /// </summary>
-        public bool HandleHello(IPEndPoint remote, byte[] payload, out Session session, out byte[] welcomePayload, out string rejectReason)
+        public bool HandleHello(IPEndPoint remote, byte[] payload, out Session session, out byte[] welcomePayload, out string rejectReason, out int replacedId)
         {
             session = null;
             welcomePayload = Array.Empty<byte>();
             rejectReason = string.Empty;
+            replacedId = 0;
 
             if (!TryParseHello(payload, out byte protoVer, out string nick, out rejectReason))
             {
@@ -142,12 +175,24 @@ namespace OriCoopDedicatedServer.Net.Session
             }
 
             Session existing = FindByEndPoint(remote);
-            if (existing != null)
+            if (existing != null && !existing.IsReady)
             {
                 session = existing;
                 welcomePayload = BuildWelcome(existing);
                 Touch(existing);
+                replacedId = 0;
                 return true;
+            }
+            if (existing != null && existing.IsReady)
+            {
+                Session dropped;
+                _sessions.TryRemove(existing.Id, out dropped);
+                replacedId = existing.Id;
+                _log.Log(ServerLogLevel.Info, "SESSAO", "Reconnect de " + remote + ": ID antigo " + existing.Id + " substituido (novo ID abaixo)");
+            }
+            else
+            {
+                replacedId = 0;
             }
 
             if (_sessions.Count >= _maxPlayers)

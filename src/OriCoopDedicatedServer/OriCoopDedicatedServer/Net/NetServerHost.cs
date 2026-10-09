@@ -37,6 +37,9 @@ namespace OriCoopDedicatedServer.Net
         private Timer _retryTimer = null!;
         private Timer _sweepTimer = null!;
         private uint _serverSeq;
+        private readonly object _throttleSync = new object();
+        private readonly Dictionary<string, DateTime> _helloThrottle = new Dictionary<string, DateTime>(StringComparer.Ordinal);
+        private readonly Dictionary<string, DateTime> _rejectThrottle = new Dictionary<string, DateTime>(StringComparer.Ordinal);
 
         /// <summary>
         /// Camada Game (02-03): quando ligada pelo ServerBoot, pacotes de
@@ -115,6 +118,10 @@ namespace OriCoopDedicatedServer.Net
             string decodeError;
             if (!EnvelopeCodec.TryDecode(datagram.Data, out header, out payload, out decodeError))
             {
+                if (!CheckRejectThrottle(datagram.Remote))
+                {
+                    return;
+                }
                 _log.Log(ServerLogLevel.Warning, "NET2", "Drop de " + datagram.Remote + ": " + decodeError);
                 await SendRejectAsync(datagram.Remote, decodeError, ct).ConfigureAwait(false);
                 return;
@@ -167,14 +174,28 @@ namespace OriCoopDedicatedServer.Net
                 await SendRejectAsync(remote, "Hello deve usar clientId -1 e token 0", ct).ConfigureAwait(false);
                 return;
             }
+            if (!CheckHelloThrottle(remote))
+            {
+                return;
+            }
             Session.Session session;
             byte[] welcomePayload;
             string rejectReason;
-            if (!_sessions.HandleHello(remote, payload, out session, out welcomePayload, out rejectReason))
+            int replacedId;
+            if (!_sessions.HandleHello(remote, payload, out session, out welcomePayload, out rejectReason, out replacedId))
             {
                 _log.Log(ServerLogLevel.Warning, "NET2", "Hello recusado de " + remote + ": " + rejectReason);
                 await SendRejectAsync(remote, rejectReason, ct).ConfigureAwait(false);
                 return;
+            }
+            if (replacedId != 0)
+            {
+                _acks.PurgeFor(remote);
+                if (Game != null)
+                {
+                    Game.OnSessionLeft(replacedId);
+                }
+                await BroadcastDisconnectAsync(replacedId, ct).ConfigureAwait(false);
             }
             await SendSystemAsync(session.EndPoint, session.Id, NetProtocol.MsgWelcome, welcomePayload, ct).ConfigureAwait(false);
         }
@@ -195,6 +216,15 @@ namespace OriCoopDedicatedServer.Net
                 return;
             }
             // Baseline do drop-old: seqs do remetente passam a valer a partir daqui.
+            // Dedup de retry: mesmo Confirm nao re-dispara o join (sem
+            // COLOR/CONFIG duplicados); o SysAck do dispatch ja foi enviado.
+            if (session.ConfirmSeen && session.LastConfirmSeq == header.Seq)
+            {
+                _sessions.Touch(session);
+                return;
+            }
+            session.ConfirmSeen = true;
+            session.LastConfirmSeq = header.Seq;
             session.LastRecvSeq = header.Seq;
             // Camada Game (02-03): COLOR inicial + CONFIG_SYNC unicast +
             // historico de abilities no join.
@@ -234,6 +264,19 @@ namespace OriCoopDedicatedServer.Net
                 return Task.CompletedTask;
             }
             _sessions.Touch(sender);
+
+            // Dedup de retry confiavel: o cliente reenvia a mesma seq ate o
+            // ACK; o SysAck ja foi enviado no dispatch, entao a duplicata e
+            // descartada sem re-executar (sem chat/teleporte/SYNC duplos).
+            if ((header.Flags & NetProtocol.FlagReliable) != 0)
+            {
+                if (sender.IsDuplicateReliable(header.Seq))
+                {
+                    _log.Log(ServerLogLevel.Debug, "NET2", "Pacote " + header.PacketId + " duplicado de " + sender.Id + " seq " + header.Seq + " (retry, drop)");
+                    return Task.CompletedTask;
+                }
+                sender.MarkReliableProcessed(header.Seq);
+            }
 
             if (header.PacketId == (int)PacketType.DISCONNECT)
             {
@@ -507,6 +550,21 @@ namespace OriCoopDedicatedServer.Net
 
         private void OnSweepTick(object? state)
         {
+            // Pendentes sem Confirm ha >5 s: limpeza anti-flood de Hello
+            // (sem broadcast — ninguem foi avisado desse join).
+            try
+            {
+                List<Session.Session> pending = _sessions.SweepUnconfirmedExpired(5000);
+                for (int i = 0; i < pending.Count; i++)
+                {
+                    _acks.PurgeFor(pending[i].EndPoint);
+                    _log.Log(ServerLogLevel.Debug, "SESSAO", "Hello pendente de " + pending[i].EndPoint + " expirado (sem Confirm)");
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.Log(ServerLogLevel.Warning, "SESSAO", "Sweeper de pendentes falhou: " + ex.GetType().Name);
+            }
             List<Session.Session> expired;
             try
             {
@@ -785,6 +843,60 @@ namespace OriCoopDedicatedServer.Net
                 {
                     _log.Log(ServerLogLevel.Warning, "ACK", "Retry para sessao " + retry.SessionId + " falhou: " + ex.GetType().Name);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Anti-flood de Hello: max 1 por endpoint a cada 500 ms. Retry
+        /// legitimo do handshake espaça mais que isso; flood e descartado
+        /// silencioso (sem log, sem resposta).
+        /// </summary>
+        private bool CheckHelloThrottle(IPEndPoint remote)
+        {
+            string key = remote.Address + ":" + remote.Port;
+            DateTime now = DateTime.UtcNow;
+            lock (_throttleSync)
+            {
+                DateTime last;
+                if (_helloThrottle.TryGetValue(key, out last)
+                    && (now - last).TotalMilliseconds < 500)
+                {
+                    return false;
+                }
+                _helloThrottle[key] = now;
+                if (_helloThrottle.Count > 1024)
+                {
+                    _helloThrottle.Clear();
+                    _helloThrottle[key] = now;
+                }
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Anti-flood de lixo: Reject + log no max 1 por endpoint a cada
+        /// 2 s. Fora da janela, o datagrama cai silencioso (sem amplificar
+        /// resposta a spoof).
+        /// </summary>
+        private bool CheckRejectThrottle(IPEndPoint remote)
+        {
+            string key = remote.Address + ":" + remote.Port;
+            DateTime now = DateTime.UtcNow;
+            lock (_throttleSync)
+            {
+                DateTime last;
+                if (_rejectThrottle.TryGetValue(key, out last)
+                    && (now - last).TotalMilliseconds < 2000)
+                {
+                    return false;
+                }
+                _rejectThrottle[key] = now;
+                if (_rejectThrottle.Count > 1024)
+                {
+                    _rejectThrottle.Clear();
+                    _rejectThrottle[key] = now;
+                }
+                return true;
             }
         }
 

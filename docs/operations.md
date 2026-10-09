@@ -476,6 +476,20 @@ padroes + `coop` => `Teleporte: ATIVADO` + `stop` limpo).
 `D:\SteamLibrary\...` nao existe nesta maquina — deploy feito so em `C:\...`.
 Validacao em jogo com 2 clientes reais ainda **a confirmar**.
 
+### Hardening 02-05 — dedup de retry + reconnect limpo + throttle (2026-10-09)
+
+Servidor: duplicata confiavel (mesma `seq`) recebe `SysAck` mas nao
+re-executa (sem chat/teleporte/`SYNC_*` duplos, janela ~256/sessao); retry do
+mesmo `Confirm` nao re-dispara join; `Hello` do mesmo endpoint com sessao
+`IsReady` substitui (ID novo + `DISCONNECT` do antigo), retry pendente reusa;
+throttle de `Hello` (500 ms/endpoint) e de `Reject` (2 s/endpoint); pendentes
+sem `Confirm` expiram em 5 s; `COLOR` inicial sempre enviada no join;
+`--net2` sozinho nao inicia sem prompt. Campos mortos `LastSentSeq`/
+`MissedSweeps` removidos de `Session`.
+
+Validacao: `dotnet run --project .\src\OriCoopDedicatedServer\SmokeProbe\SmokeProbe.csproj -- --port 7779 --test all`
+=> `SMOKE_OK` (16 PASS incl. `game`), 0 aviso 0 erro no build.
+
 ### Piloto Spirit Flame 03-03 — checklist de 2 clientes (2026-10-06, manual)
 
 Pre-gate automatizado (rodar antes do teste em jogo; exige `SMOKE_OK`):

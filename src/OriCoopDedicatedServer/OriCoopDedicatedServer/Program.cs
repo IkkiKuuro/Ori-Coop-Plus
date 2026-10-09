@@ -17,35 +17,40 @@ internal static class Program
 		int maxplayers = 4;
 		int port = 7777;
 		bool autoStart = false;
+		bool meaningfulArg = false;
 		int positionalArgument = 0;
 
 		if (args != null && args.Length > 0)
 		{
-			autoStart = true;
 			for (int i = 0; i < args.Length; i++)
 			{
 				string arg = args[i].ToLower();
 				if (arg == "--net2" || arg == "-net2" || arg == "/net2")
 				{
 					// No-op: novo core e o default desde o cutover.
+					// Nao conta como avanco automatico sozinho.
 					continue;
 				}
 				if (arg == "--auto" || arg == "-auto" || arg == "/auto")
 				{
+					meaningfulArg = true;
 					continue;
 				}
 				else if ((arg == "--max-players" || arg == "--maxplayers") && i + 1 < args.Length
 					&& int.TryParse(args[++i], out var namedMaxPlayers))
 				{
+					meaningfulArg = true;
 					maxplayers = ClampMaxPlayers(namedMaxPlayers);
 				}
 				else if (arg == "--port" && i + 1 < args.Length
 					&& int.TryParse(args[++i], out var namedPort))
 				{
+					meaningfulArg = true;
 					port = NormalizePort(namedPort);
 				}
 				else if (int.TryParse(arg, out var positionalValue))
 				{
+					meaningfulArg = true;
 					if (positionalArgument++ == 0)
 					{
 						maxplayers = ClampMaxPlayers(positionalValue);
@@ -57,6 +62,7 @@ internal static class Program
 				}
 			}
 		}
+		autoStart = meaningfulArg;
 
 		if (!autoStart)
 		{
