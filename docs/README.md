@@ -41,6 +41,8 @@ para outros jogos.
   rework de sincronia (T0–T4, um bloco por mudança).
 - Consulte [ferramentas e scripts](../scripts/README.md) para utilitários
   de engenharia reversa, Cecil, inspeção de assemblies e diagnóstico.
+- Consulte [graphify](graphify.md) para setup do grafo de conhecimento,
+  quando rebuildar e como o agente deve usar.
 
 
 ## Escopo e confiabilidade
