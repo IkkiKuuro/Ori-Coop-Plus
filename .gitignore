@@ -6,3 +6,4 @@
 *.suo
 /Logs
 /src/OriCoopDedicatedServer/OriCoopDedicatedServer/Logs
+/graphify-out/
