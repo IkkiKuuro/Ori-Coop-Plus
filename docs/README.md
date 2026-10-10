@@ -19,6 +19,9 @@ para outros jogos.
 - Use [mapa de entradas do jogo](game-entry-map.md) para consultar habilidades,
   teleporte, pickups, alvos de combate, portas, alavancas e lacunas de
   cobertura.
+- Consulte [auditoria do assembly do jogo](game-assembly-audit.md) para o
+  fingerprint REA do `Assembly-CSharp.dll` e as divergências relay-sem-aplicação
+  auditadas em 2026-10-10.
 - Consulte [scaffolding BepInEx](bepinex-architecture.md) para a arquitetura do
   novo plugin, suas camadas e os pontos ainda dependentes de confirmação no
   `Assembly-CSharp`.

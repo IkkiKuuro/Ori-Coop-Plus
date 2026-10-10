@@ -25,9 +25,14 @@ controlavel; menu e prologo com Naru nao representam o fluxo normal do mod.
 | entity sync | sincronizacao adicional de entidades Unity; desativada por padrao |
 
 O significado exato de cada entidade depende dos tipos presentes nas DLLs do
-jogo. Os nomes acima sao o vocabulario observado nas classes
-`SeinPickupMPProcessor`, `SeinSpiritMP`, `SeinStompMP`, `WorldSyncManager` e
-`EntitySync`.
+jogo. Auditoria vanilla 2026-10-10 (REA `ev_b8a19444...`, `Assembly-CSharp`
+2539 tipos): `MoonGuid`, `PickupBase`, `IAttackable`,
+`ISpiritFlameAttackable`, `Game.Targets`, `SeinStomp`,
+`SeinSpiritFlameAbility` existem no vanilla; `SeinPickupMPProcessor`,
+`SeinSpiritMP`, `SeinStompMP`, `WorldSyncManager`, `EntitySync` são nomes do
+mod/legado, não do vanilla. `Boss`, `SpiritWell` e `Breakable` têm zero tipos
+no vanilla (ver `game-entry-map.md` para os substitutos reais:
+sequências `Kuro*`, `SavePedestal`+`SoulFlame`, sem alvo para 13).
 
 ## Recursos cooperativos
 

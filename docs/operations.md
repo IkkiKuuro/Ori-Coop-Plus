@@ -630,6 +630,14 @@ rodar e anotar aqui data, bytes da DLL e pass/fail por check (C1–C6).
 
 ## Itens ainda a confirmar e Bugs Conhecidos
 
+- [Auditoria 2026-10-10] Fingerprint REA do `Assembly-CSharp.dll`
+  (`sha256 18e70a4c…`, 2.042.880 B, 2539 types / 14123 methods) e tabela
+  relay-sem-aplicação (`SKILL`/`SYNC_*` descartados em
+  `NetworkService.cs:990-1036`) registrados em
+  [game-assembly-audit.md](game-assembly-audit.md). Verificação por inspeção
+  estática (REA + grep + leitura de código), sem run do jogo; efeitos visuais
+  seguem **a confirmar** com 2 clientes.
+
 - [Bug] Foco/interatividade do submenu nativo `OriCoopMenuScreen`: correcao
   aplicada no codigo (filho do `InventoryManager`, `IsSuspended=false`/
   `IsActive=true`, botoes clonados sem `Condition`, sem `SetVisible(false)` —
