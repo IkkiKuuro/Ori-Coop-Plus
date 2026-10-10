@@ -400,6 +400,17 @@ namespace OriCoopBepInEx.Client
             try { shot.transform.parent = null; }
             catch { }
             StripVisualClone(shot, false);
+            // O LineRenderer real e redesenhado por UpdateLineRenderer a cada
+            // frame — sem o SpiritFlameProjectile (destruido acima) ele
+            // congelaria, e em world-space mover o transform nao adiantaria.
+            // Desliga os LineRenderers e viaja um quad com o MATERIAL real
+            // clonado (textura/cor/bloom verdadeiros) + scroll no mover.
+            Material boltMat = StealBoltMaterial(shot);
+            if (boltMat != null)
+            {
+                try { BuildBoltVisual(shot, boltMat); }
+                catch { }
+            }
             try
             {
                 shot.transform.position = origin;
@@ -420,7 +431,94 @@ namespace OriCoopBepInEx.Client
                 if (mover != null)
                 {
                     mover.Launch(direction, RemotePlayerPuppet.FakeShotSpeed, RemotePlayerPuppet.FakeShotLifetime, RemotePlayerPuppet.FakeShotRange);
+                    mover.SetBoltMaterial(boltMat);
                 }
+            }
+            catch { }
+        }
+
+        // Rouba o material verdadeiro do LineRenderer do prefab (textura e
+        // bloom do tiro real) e desliga os LineRenderers do clone — sem o
+        // driver eles exibiriam um frame congelado. Material CLONADO: o
+        // scroll do mover nunca vaza para o jogo local.
+        private static Material StealBoltMaterial(GameObject shot)
+        {
+            try
+            {
+                LineRenderer[] lines = shot.GetComponentsInChildren<LineRenderer>(true);
+                Material donor = null;
+                if (lines != null)
+                {
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        if (lines[i] == null)
+                        {
+                            continue;
+                        }
+                        try { lines[i].enabled = false; }
+                        catch { }
+                        if (donor == null)
+                        {
+                            try { donor = lines[i].sharedMaterial; }
+                            catch { donor = null; }
+                        }
+                    }
+                }
+                if (donor == null)
+                {
+                    return null;
+                }
+                Material clone = null;
+                try { clone = new Material(donor); }
+                catch { clone = null; }
+                return clone;
+            }
+            catch { }
+            return null;
+        }
+
+        private static Mesh s_boltQuadMesh;
+
+        private static void BuildBoltVisual(GameObject shot, Material boltMat)
+        {
+            try
+            {
+                if (s_boltQuadMesh == null)
+                {
+                    Mesh mesh = new Mesh();
+                    mesh.vertices = new Vector3[]
+                    {
+                        new Vector3(-0.5f, -0.5f, 0f),
+                        new Vector3(0.5f, -0.5f, 0f),
+                        new Vector3(0.5f, 0.5f, 0f),
+                        new Vector3(-0.5f, 0.5f, 0f)
+                    };
+                    mesh.uv = new Vector2[]
+                    {
+                        new Vector2(0f, 0f),
+                        new Vector2(1f, 0f),
+                        new Vector2(1f, 1f),
+                        new Vector2(0f, 1f)
+                    };
+                    mesh.triangles = new int[] { 0, 2, 1, 0, 3, 2 };
+                    try { mesh.RecalculateNormals(); }
+                    catch { }
+                    mesh.name = "RemoteRealBoltQuad";
+                    s_boltQuadMesh = mesh;
+                }
+                GameObject bolt = new GameObject("RemoteRealBolt");
+                try
+                {
+                    MeshFilter filter = bolt.AddComponent<MeshFilter>();
+                    filter.sharedMesh = s_boltQuadMesh;
+                    MeshRenderer renderer = bolt.AddComponent<MeshRenderer>();
+                    renderer.sharedMaterial = boltMat;
+                    bolt.transform.SetParent(shot.transform, false);
+                    bolt.transform.localPosition = Vector3.zero;
+                    bolt.transform.localRotation = Quaternion.identity;
+                    bolt.transform.localScale = new Vector3(1.2f, 0.35f, 1f);
+                }
+                catch { }
             }
             catch { }
         }
@@ -442,6 +540,25 @@ namespace OriCoopBepInEx.Client
             try { fx.transform.position = origin; }
             catch { }
             try { fx.SetActive(true); }
+            catch { }
+            // Particulas do prefab podem nascer pausadas fora do Start
+            // original (destruido no strip): forca o play de todas.
+            try
+            {
+                ParticleSystem[] systems = fx.GetComponentsInChildren<ParticleSystem>();
+                if (systems != null)
+                {
+                    for (int i = 0; i < systems.Length; i++)
+                    {
+                        if (systems[i] == null)
+                        {
+                            continue;
+                        }
+                        try { systems[i].Play(); }
+                        catch { }
+                    }
+                }
+            }
             catch { }
             try
             {
@@ -717,6 +834,14 @@ namespace OriCoopBepInEx.Client
             private float _age;
             private float _lifetime = 0.8f;
             private float _range = 14f;
+            private Material _boltMat;
+            private float _scroll = 3f;
+
+            public void SetBoltMaterial(Material mat)
+            {
+                try { _boltMat = mat; }
+                catch { }
+            }
 
             public void Launch(Vector3 direction, float speed, float lifetime, float range)
             {
@@ -750,6 +875,18 @@ namespace OriCoopBepInEx.Client
                     float dt = Time.deltaTime;
                     transform.position += _velocity * dt;
                     _age += dt;
+                    // Fluxo de energia no material clonado (nunca vaza para
+                    // o jogo local — o material e por-tiro).
+                    if (_boltMat != null)
+                    {
+                        try
+                        {
+                            Vector2 off = _boltMat.mainTextureOffset;
+                            off.x -= dt * _scroll;
+                            _boltMat.mainTextureOffset = off;
+                        }
+                        catch { }
+                    }
                     if (_age >= _lifetime || Vector3.Distance(transform.position, _start) >= _range)
                     {
                         try { UnityEngine.Object.Destroy(gameObject); }

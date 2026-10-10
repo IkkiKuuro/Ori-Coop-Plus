@@ -180,6 +180,22 @@ real do Sein):
 
 - R3-C1 (C1 A→B no espelho real): issue (2026-10-10) — reported: "ok com ressalva, vemos a bola piscando no ataque, porém não vemos o projetil, o som, nem o VFX". Orb mirror + ShootAnimation OK; projectile/sound/VFX missing. Root cause CONFIRMED by log: `motivo=sem-prefab` every shot (GetComponent on Sein root always null — abilities are CharacterState, not scene MonoBehaviours) + fallback matched wrong clip (`aplicado=grenadeThrowDown` — grenade anim, not spirit flame).
 - R3-C1 fix deployed (DLL 103424B, 2026-10-10): patch caches exact prefab from firing instance via reflection (NoteLocalPrefabs, sibling-class CS0039 → GetProperty CurrentSpiritFlame); mirror checks cache first + GetComponentsInChildren fallback; grenade excluded from AimThrow fallback (body holds pose fail-closed, orb ShootAnimation is the visible attack). C3 evidence in same log: enviado-only on shooter, recebido-only on remote, EvDropped 0.
-- R3-C1 retest: pending (requires BOTH clients restarted — BepInEx loads DLL at startup)
+- R3-C1 retest (2026-10-10, DLL 103424B): parcial — som + sync OK (`aplicado=espelho-real`), mas animacao/efeitos congelados e projetil nao viaja. Root cause: LineRenderer real e dirigido por UpdateLineRenderer a cada frame; com SpiritFlameProjectile destruido ele congela (world-space: mover o transform nao adianta). Item novo: tiro carregado (charge) com seus efeitos nao aparece — caminho de charge nao hookado (gap novo, ver G-03-6).
+- R3-C1 fix 2 deployed (DLL 105472B, 2026-10-10): LineRenderers do clone desligados; quad viajante com MATERIAL real clonado (bloom) + scroll de textura no mover; Play() forcado nas particulas do ThrowEffect. Requer restart dos 2 clientes.
+- R3-C1 retest 2: pending
 - R3-C2 (C2 B→A, simetria): pending
 - R3-C3 (C3 sem eco): pending
+
+## Gaps (round 2)
+
+- gap_id: G-03-6
+  truth: "Tiro carregado (charge) do Spirit Flame replica som + VFX no puppet remoto"
+  status: failed
+  reason: "User reported (2026-10-10): tiro carregado com seus efeitos sonoros e visuais nao aparece"
+  severity: major
+  test: R3-C1
+  root_cause: "Undiagnosed — charge usa outro metodo de habilidade (nao ThrowSpiritFlames); precisa mapear via inspecao binaria"
+  artifacts: []
+  missing:
+    - "Mapear metodo de disparo carregado (REA) e hookar como novo evento ou flag no payload"
+  debug_session: .planning/debug/player-event-delivery.md
