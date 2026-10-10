@@ -35,7 +35,20 @@ namespace OriCoopBepInEx.Events
             s_handlers[kind] = handler;
         }
 
-        public static void PublishSpiritFlame(Vector3Data direction, Vector3Data origin, long timestampTicks)
+        public static void PublishSpiritFlame(Vector3Data direction, Vector3Data origin, Vector3Data aim, long timestampTicks)
+        {
+            Publish((byte)PlayerEventKind.SpiritFlame, direction, origin, aim, timestampTicks, "PublishSpiritFlame");
+        }
+
+        // Rajada carregada (kind 2, radial no orbe): aim = origin (sem
+        // direcao de viagem; o visual remoto e radial, nao beam).
+        public static void PublishChargedFlame(Vector3Data origin, long timestampTicks)
+        {
+            Vector3Data zero = new Vector3Data(0f, 0f, 0f);
+            Publish((byte)PlayerEventKind.ChargedFlame, zero, origin, origin, timestampTicks, "PublishChargedFlame");
+        }
+
+        private static void Publish(byte kind, Vector3Data direction, Vector3Data origin, Vector3Data aim, long timestampTicks, string tag)
         {
             INetworkService transport = s_transport;
             if (transport == null || !transport.IsConnected)
@@ -43,14 +56,14 @@ namespace OriCoopBepInEx.Events
                 return;
             }
             SpiritFlameEventData data = new SpiritFlameEventData(
-                (byte)PlayerEventKind.SpiritFlame, direction, origin, timestampTicks);
+                kind, direction, origin, aim, timestampTicks);
             try
             {
                 transport.SendPlayerEvent(data);
             }
             catch (Exception ex)
             {
-                OriCoopPlugin.LogWarning("[EVENT] PublishSpiritFlame falhou: " + ex.Message);
+                OriCoopPlugin.LogWarning("[EVENT] " + tag + " falhou: " + ex.Message);
                 return;
             }
             // Fase enviado (D-12, G-03-3): conta + registra no ring + LogInfo

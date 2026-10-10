@@ -256,16 +256,20 @@ do mesmo build.
 ## Pacote de evento do personagem PLAYER_EVENT (19)
 
 `PLAYER_EVENT` carrega UM disparo do jogador local (piloto: Spirit Flame),
-nesta ordem congelada (37 bytes, `PlayerEventProtocol.cs` e o contrato
-canonico), sempre precedido do marcador `int 19`:
+nesta ordem congelada (49 bytes v2 — v2 adiciona `aim`; `PlayerEventProtocol.cs`
+e o contrato canonico), sempre precedido do marcador `int 19`:
 
 | Offset | Tamanho | Campo | Descricao |
 | ---: | ---: | --- | --- |
 | 0 | 4 | `marker` | `int 19` (convecao legado-identica) |
-| 4 | 1 | `kind` | `PlayerEventKind` como byte opaco (`SpiritFlame = 1`; `0` reservado) |
-| 5 | 12 | `direction` | `float dirX, dirY, dirZ` (piloto: facing `+-X`, resto `0`) |
-| 17 | 12 | `origin` | `float originX, originY, originZ` (posicao do Sein no disparo) |
-| 29 | 8 | `timestamp` | `long` com `DateTime.UtcNow.Ticks` do disparo |
+| 4 | 1 | `kind` | `PlayerEventKind` como byte opaco (`SpiritFlame = 1`, `ChargedFlame = 2`; `0` reservado) |
+| 5 | 12 | `direction` | `float dirX, dirY, dirZ` (direcao inicial = normalizada da mira; sem alvo, facing) |
+| 17 | 12 | `origin` | `float originX, originY, originZ` (posicao do ORBE no disparo = StartPosition real) |
+| 29 | 12 | `aim` | `float aimX, aimY, aimZ` (v2: ponto de mira — alvo travado ou `origin+facing*5`; o beam remoto vai de `origin` a `aim`) |
+| 41 | 8 | `timestamp` | `long` com `DateTime.UtcNow.Ticks` do disparo |
+
+v2 quebra o fio one-way (corpos v1 de 37 bytes sao descartados): cliente e
+servidor sempre do mesmo build.
 
 A identidade do remetente viaja no `clientId` do header do envelope (nunca
 no corpo) e o relay reemite os bytes originais sem reconstrucao nem fusao —

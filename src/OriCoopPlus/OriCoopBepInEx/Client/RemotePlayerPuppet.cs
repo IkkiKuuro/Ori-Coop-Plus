@@ -351,14 +351,14 @@ namespace OriCoopBepInEx.Client
         }
 
         // Reproducao visual do Spirit Flame remoto via SeinVisualMirror
-        // (espelho do Sein real): o tiro real (projetil, particula, som)
-        // nasce do prefab clonado do Sein; o clipe de ataque (AimThrow,
+        // (espelho do Sein real): beam orbe→mira com arco (geometria real do
+        // tiro) + particula + som do prefab; o clipe de ataque (AimThrow,
         // exact-then-state, fail-closed) abaixo e best-effort. Tudo visual:
         // zero dano, zero colisao, zero mutacao de estado do jogo local,
-        // zero publicacao (D-07). So o kind SpiritFlame chega aqui — o
+        // zero publicacao (D-07). So kinds conhecidos chegam aqui — o
         // PlayerEventCore filtra desconhecidos fail-closed antes.
         // Roda na main thread do Unity (via EnqueueMainThread).
-        public void PlaySpiritFlameVisual(Vector3 origin, Vector3 direction)
+        public void PlaySpiritFlameVisual(Vector3 origin, Vector3 direction, Vector3 aim)
         {
             if (_animator == null)
             {
@@ -371,14 +371,14 @@ namespace OriCoopBepInEx.Client
             }
 
             TextureAnimationWithTransitions clip;
-            // Efeito real primeiro, sempre: o espelho dispara o tiro do
+            // Efeito real primeiro, sempre: o espelho dispara o beam do
             // Sein clonado e independe do resolve do clipe — o bloco do
             // clipe abaixo e best-effort e NUNCA suprime o efeito.
             try
             {
                 if (_mirror != null)
                 {
-                    _mirror.PlayShot(origin, direction);
+                    _mirror.PlayShot(origin, direction, aim);
                 }
                 else
                 {
@@ -420,6 +420,27 @@ namespace OriCoopBepInEx.Client
                 PlayerId, clip.name);
             ReplicationObservability.Record(appliedLine);
             OriCoopPlugin.LogInfo(appliedLine);
+        }
+
+        // Rajada carregada remota (kind 2, radial no orbe): delega ao
+        // espelho; sem corpo de anim especifico — visual puro, fail-closed.
+        public void PlayChargedVisual(Vector3 origin)
+        {
+            try
+            {
+                if (_mirror != null)
+                {
+                    _mirror.PlayChargedShot(origin);
+                }
+                else
+                {
+                    string noMirrorLine = string.Format("[EVENT] P{0} kind=chargedflame aplicado=manteve-atual motivo=sem-espelho",
+                        PlayerId);
+                    ReplicationObservability.Record(noMirrorLine);
+                    OriCoopPlugin.LogInfo(noMirrorLine);
+                }
+            }
+            catch { }
         }
     }
 }

@@ -186,7 +186,11 @@ real do Sein):
 - R3-C1 fix 3 deployed (DLL 105472B rebuild, 2026-10-10): bolt = 1o LineRenderer NATIVO com segmento local (-0.4..0.9) + material clonado com scroll; demais linhas off; throw-effect com Play() + fade 0.35s (materiais isolados) + linha diag-bolt (mat/shader/lines) no log. Requer restart dos 2 clientes.
 - R3-C1 retest 3 (2026-10-10): bolt VISIVEL (`diag-bolt mat=UberShaderMaterial lines=1` = bolt real renderizando) mas nasce afastado da bola + charge segue sem nada (G-03-6).
 - R3-C1 fix 4 deployed (DLL rebuild, 2026-10-10): origem do evento = posicao do ORBE (StartPosition real), fallback corpo. Requer restart dos 2 clientes.
-- R3-C1 retest 4: pending
+- R3-C1 retest 4 (2026-10-10): bolt VISIVEL mas nasce afastado da bola (`diag-bolt mat=UberShaderMaterial lines=1`). Root cause: origem = posicao do CORPO; o tiro real parte do ORBE. Charge segue sem nada (G-03-6).
+- R3-C1 fix 5 (fio v2 + beam + charge, DLL 111616B + servidor, 2026-10-10): REA confirmou beam orbe→cabeca com arco + mira em ClosestAttackables + charge = ReleaseChargeBurst. Payload 37B→49B (+aim), kind 2 ChargedFlame; patch le mira travada (fallback facing*5); espelho desenha beam orbe→mira com arco + impacto + som; charge radial com prefab ChargeFlameBurst + som. Probe SMOKE_OK 49B. QUEBRA ONE-WAY: servidor + 2 clientes restartados juntos. G-03-6 em teste.
+- R3-C1 retest 5: pending
+- R3-C2 (C2 B→A, simetria): pending
+- R3-C3 (C3 sem eco): pending
 - R3-C2 (C2 B→A, simetria): pending
 - R3-C3 (C3 sem eco): pending
 
@@ -195,11 +199,17 @@ real do Sein):
 - gap_id: G-03-6
   truth: "Tiro carregado (charge) do Spirit Flame replica som + VFX no puppet remoto"
   status: failed
+  in_fix: true
+  fix_approach: "ChargeFlamePatch (ReleaseChargeBurst, kind 2) + burst prefab visual-only + som; deployed fio v2, aguardando piloto"
   reason: "User reported (2026-10-10): tiro carregado com seus efeitos sonoros e visuais nao aparece"
   severity: major
   test: R3-C1
-  root_cause: "Undiagnosed — charge usa outro metodo de habilidade (nao ThrowSpiritFlames); precisa mapear via inspecao binaria"
-  artifacts: []
+  root_cause: "Mapeado via REA: charge usa SeinChargeFlameAbility.ReleaseChargeBurst (nunca chama ThrowSpiritFlames); prefabs ChargeFlameBurstA/B/C + ChargeFlameBurst.DealDamage"
+  artifacts:
+    - path: "src/OriCoopPlus/OriCoopBepInEx/Patches/SpiritFlamePatch.cs"
+      issue: "ChargeFlamePatch adicionado (hook + NoteChargeAssets reflexivo)"
+    - path: "src/OriCoopPlus/OriCoopBepInEx/Client/SeinVisualMirror.cs"
+      issue: "PlayChargedShot radial + NoteChargePrefabs/NoteChargeSound"
   missing:
-    - "Mapear metodo de disparo carregado (REA) e hookar como novo evento ou flag no payload"
+    - "Piloto 2 clientes: confirmar burst + som do charge no remoto"
   debug_session: .planning/debug/player-event-delivery.md

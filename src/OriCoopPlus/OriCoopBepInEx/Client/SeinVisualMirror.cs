@@ -28,6 +28,8 @@ namespace OriCoopBepInEx.Client
         // local; o remoto pode ter nivel (e visual) distinto — nuance
         // aceita, muito acima do fake anterior.
         private static GameObject s_localShotPrefab;
+        private static GameObject s_chargeBurstPrefab;
+        private static object s_chargeSoundProvider;
 
         public static void NoteLocalPrefabs(GameObject projectilePrefab)
         {
@@ -36,6 +38,30 @@ namespace OriCoopBepInEx.Client
                 if (projectilePrefab != null)
                 {
                     s_localShotPrefab = projectilePrefab;
+                }
+            }
+            catch { }
+        }
+
+        public static void NoteChargePrefabs(GameObject burstPrefab)
+        {
+            try
+            {
+                if (burstPrefab != null)
+                {
+                    s_chargeBurstPrefab = burstPrefab;
+                }
+            }
+            catch { }
+        }
+
+        public static void NoteChargeSound(object soundProvider)
+        {
+            try
+            {
+                if (soundProvider != null)
+                {
+                    s_chargeSoundProvider = soundProvider;
                 }
             }
             catch { }
@@ -179,7 +205,7 @@ namespace OriCoopBepInEx.Client
             }
         }
 
-        public void PlayShot(Vector3 origin, Vector3 direction)
+        public void PlayShot(Vector3 origin, Vector3 direction, Vector3 aim)
         {
             try
             {
@@ -218,22 +244,61 @@ namespace OriCoopBepInEx.Client
                 try { prefabComp = prefab.GetComponent<SpiritFlameProjectile>(); }
                 catch { prefabComp = null; }
 
-                // (3) Projetil visual em linha reta.
-                try { SpawnRealShot(prefab, origin, direction); }
-                catch { }
-
-                // (4) Efeito de disparo do prefab (visual + auto-destroy).
+                // Parametros do voo lidos do prefab (reflexao defensiva).
+                float travelTime = 0.45f;
+                int vertexCount = 8;
+                GameObject impactPrefab = null;
+                GameObject throwPrefab = null;
                 try
                 {
                     if (prefabComp != null)
                     {
-                        GameObject fxPrefab = null;
-                        try { fxPrefab = prefabComp.ThrowEffectGameObject; }
-                        catch { fxPrefab = null; }
-                        if (fxPrefab != null)
+                        try
                         {
-                            SpawnThrowEffect(fxPrefab, origin);
+                            FieldInfo durField = prefabComp.GetType().GetField(
+                                "Duration", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                            if (durField != null)
+                            {
+                                object dv = durField.GetValue(prefabComp);
+                                if (dv is float && (float)dv > 0.01f && (float)dv < 5f)
+                                {
+                                    travelTime = (float)dv;
+                                }
+                            }
                         }
+                        catch { }
+                        try
+                        {
+                            FieldInfo vcField = prefabComp.GetType().GetField(
+                                "LineVertexCount", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                            if (vcField != null)
+                            {
+                                object vv = vcField.GetValue(prefabComp);
+                                if (vv is int && (int)vv >= 2 && (int)vv <= 32)
+                                {
+                                    vertexCount = (int)vv;
+                                }
+                            }
+                        }
+                        catch { }
+                        try { impactPrefab = prefabComp.ImpactEffectGameObject; }
+                        catch { impactPrefab = null; }
+                        try { throwPrefab = prefabComp.ThrowEffectGameObject; }
+                        catch { throwPrefab = null; }
+                    }
+                }
+                catch { }
+
+                // (3) Beam orbe→mira com arco (geometria real do tiro).
+                try { SpawnBeamShot(prefab, origin, aim, direction, travelTime, vertexCount, impactPrefab); }
+                catch { }
+
+                // (4) Efeito de disparo do prefab (visual + fade rapido).
+                try
+                {
+                    if (throwPrefab != null)
+                    {
+                        SpawnThrowEffect(throwPrefab, origin);
                     }
                 }
                 catch { }
@@ -267,6 +332,93 @@ namespace OriCoopBepInEx.Client
                 catch { }
 
                 string appliedLine = string.Format("[EVENT] P{0} kind=spiritflame aplicado=espelho-real motivo=recebido", _playerId);
+                try { ReplicationObservability.Record(appliedLine); }
+                catch { }
+                try { OriCoopPlugin.LogInfo(appliedLine); }
+                catch { }
+            }
+            catch { }
+        }
+
+        // Rajada carregada (kind 2, radial no orbe): prefab do burst
+        // visual-only + fade + som do charge. Fallback honesto com motivo
+        // se o prefab ainda nao foi anotado pelo patch local.
+        public void PlayChargedShot(Vector3 origin)
+        {
+            try
+            {
+                try
+                {
+                    if (_shootAnim != null)
+                    {
+                        try { _shootAnim.Restart(); }
+                        catch { }
+                    }
+                }
+                catch { }
+                GameObject burstPrefab = null;
+                try { burstPrefab = s_chargeBurstPrefab; }
+                catch { burstPrefab = null; }
+                if (burstPrefab == null)
+                {
+                    string noBurstLine = string.Format("[EVENT] P{0} kind=chargedflame aplicado=manteve-atual motivo=sem-prefab-charge", _playerId);
+                    try { ReplicationObservability.Record(noBurstLine); }
+                    catch { }
+                    try { OriCoopPlugin.LogInfo(noBurstLine); }
+                    catch { }
+                    return;
+                }
+                GameObject burst = null;
+                try { burst = UnityEngine.Object.Instantiate(burstPrefab) as GameObject; }
+                catch { burst = null; }
+                if (burst == null)
+                {
+                    return;
+                }
+                try { burst.SetActive(false); }
+                catch { }
+                try { burst.transform.parent = null; }
+                catch { }
+                StripVisualClone(burst, true);
+                try { IsolateMaterials(burst); }
+                catch { }
+                try { burst.transform.position = origin; }
+                catch { }
+                try { burst.SetActive(true); }
+                catch { }
+                try
+                {
+                    ParticleSystem[] systems = burst.GetComponentsInChildren<ParticleSystem>();
+                    if (systems != null)
+                    {
+                        for (int i = 0; i < systems.Length; i++)
+                        {
+                            if (systems[i] == null)
+                            {
+                                continue;
+                            }
+                            try { systems[i].Play(); }
+                            catch { }
+                        }
+                    }
+                }
+                catch { }
+                try { FadeAndDie.Attach(burst, 0.6f); }
+                catch { }
+                try
+                {
+                    object sp = null;
+                    try { sp = s_chargeSoundProvider; }
+                    catch { sp = null; }
+                    SoundProvider provider = sp as SoundProvider;
+                    if (provider != null)
+                    {
+                        try { Core.Sound.Play(provider.GetSound(null), origin, null); }
+                        catch { }
+                    }
+                }
+                catch { }
+                string appliedLine = string.Format("[EVENT] P{0} kind=chargedflame aplicado=espelho-real motivo=recebido", _playerId);
                 try { ReplicationObservability.Record(appliedLine); }
                 catch { }
                 try { OriCoopPlugin.LogInfo(appliedLine); }
@@ -387,7 +539,13 @@ namespace OriCoopBepInEx.Client
             }
         }
 
-        private static void SpawnRealShot(GameObject prefab, Vector3 origin, Vector3 direction)
+        // Beam orbe→mira (geometria real do tiro): o LineRenderer do jogo
+        // interpola StartPosition→cabeca com arco; aqui o driver redesenha
+        // os pontos a cada frame (start fixo, cabeca viajando start→aim em
+        // travelTime, arco lateral senoidal). Sem alvo (aim≈origin), o beam
+        // vai para origin+direction*6 (TempTarget real ~4.5 a frente).
+        // Tudo desativado durante o strip; zero dano/colisao/publicacao.
+        private static void SpawnBeamShot(GameObject prefab, Vector3 origin, Vector3 aim, Vector3 fallbackDir, float travelTime, int vertexCount, GameObject impactPrefab)
         {
             GameObject shot = null;
             try { shot = UnityEngine.Object.Instantiate(prefab) as GameObject; }
@@ -401,149 +559,301 @@ namespace OriCoopBepInEx.Client
             try { shot.transform.parent = null; }
             catch { }
             StripVisualClone(shot, false);
-            // Bolt nativo: reusa o PRIMEIRO LineRenderer do prefab com um
-            // segmento estatico em espaco local (viaja com o root) + material
-            // clonado com scroll no mover. Quad artesanal com material de
-            // linha nao renderizava (shader espera o stream do line) — por
-            // isso o bolt era invisivel e so o flash parado aparecia.
-            // Demais linhas do prefab: desligadas.
-            Material boltMat = ConfigureLineBolt(shot);
+            Vector3 target = aim;
             try
             {
-                shot.transform.position = origin;
-                Vector3 dir = direction;
-                if (dir.sqrMagnitude < 0.0001f)
+                Vector3 gap = aim - origin;
+                if (gap.sqrMagnitude < 0.04f)
                 {
-                    dir = new Vector3(1f, 0f, 0f);
+                    Vector3 d = fallbackDir;
+                    if (d.sqrMagnitude < 0.0001f)
+                    {
+                        d = new Vector3(1f, 0f, 0f);
+                    }
+                    d.Normalize();
+                    target = origin + d * 6f;
                 }
-                float ang = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
-                shot.transform.rotation = Quaternion.Euler(0f, 0f, ang);
             }
+            catch { target = aim; }
+            LineRenderer beam = null;
+            try
+            {
+                LineRenderer[] lines = shot.GetComponentsInChildren<LineRenderer>(true);
+                if (lines != null)
+                {
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        if (lines[i] == null)
+                        {
+                            continue;
+                        }
+                        if (beam == null)
+                        {
+                            beam = lines[i];
+                        }
+                        else
+                        {
+                            try { lines[i].enabled = false; }
+                            catch { }
+                        }
+                    }
+                }
+            }
+            catch { beam = null; }
+            if (beam == null)
+            {
+                try { UnityEngine.Object.Destroy(shot); }
+                catch { }
+                return;
+            }
+            try
+            {
+                beam.enabled = true;
+                beam.useWorldSpace = true;
+                try
+                {
+                    if (beam.sharedMaterial != null)
+                    {
+                        beam.material = new Material(beam.sharedMaterial);
+                    }
+                }
+                catch { }
+                SetVertexCount(beam, vertexCount);
+            }
+            catch { }
+            try { shot.transform.position = origin; }
             catch { }
             try { shot.SetActive(true); }
             catch { }
             try
             {
-                RealShotMover mover = shot.AddComponent<RealShotMover>();
-                if (mover != null)
+                RealBeamDriver driver = shot.AddComponent<RealBeamDriver>();
+                if (driver != null)
                 {
-                    mover.Launch(direction, RemotePlayerPuppet.FakeShotSpeed, RemotePlayerPuppet.FakeShotLifetime, RemotePlayerPuppet.FakeShotRange);
-                    mover.SetBoltMaterial(boltMat);
+                    driver.Launch(beam, origin, target, travelTime, vertexCount, impactPrefab);
                 }
             }
             catch { }
         }
 
-        // Bolt nativo com material clonado: o LineRenderer original e
-        // dirigido por UpdateLineRenderer a cada frame; sem o driver, define
-        // um segmento estatico em espaco LOCAL (o root em movimento carrega
-        // o segmento) e o mover faz scroll na textura (fluxo de energia).
-        // Material CLONADO — scroll nunca vaza para o jogo local. Retorna
-        // null se a clonagem falhar (bolt viaja estatico, sem scroll).
-        private static Material ConfigureLineBolt(GameObject shot)
+        private static void SetVertexCount(LineRenderer line, int count)
         {
             try
             {
-                LineRenderer[] lines = shot.GetComponentsInChildren<LineRenderer>(true);
-                if (lines == null || lines.Length == 0)
+                if (count < 2)
                 {
-                    return null;
+                    count = 2;
                 }
-                Material boltMat = null;
-                string sharedName = "?";
-                for (int i = 0; i < lines.Length; i++)
+                if (count > 32)
                 {
-                    LineRenderer line = lines[i];
-                    if (line == null)
-                    {
-                        continue;
-                    }
-                    if (i == 0)
-                    {
-                        try
-                        {
-                            try
-                            {
-                                if (line.sharedMaterial != null && line.sharedMaterial.name != null)
-                                {
-                                    sharedName = line.sharedMaterial.name;
-                                }
-                            }
-                            catch { }
-                            line.enabled = true;
-                            line.useWorldSpace = false;
-                            try
-                            {
-                                if (line.sharedMaterial != null)
-                                {
-                                    line.material = new Material(line.sharedMaterial);
-                                }
-                            }
-                            catch { }
-                            SetLineSegment(line, new Vector3(-0.4f, 0f, 0f), new Vector3(0.9f, 0f, 0f));
-                            try { boltMat = line.material; }
-                            catch { boltMat = null; }
-                        }
-                        catch { }
-                    }
-                    else
-                    {
-                        try { line.enabled = false; }
-                        catch { }
-                    }
+                    count = 32;
                 }
-                // Diagnostico (taxa discreta de tiro): identifica o bolt real.
-                try
-                {
-                    string diag = string.Format("[EVENT] diag-bolt mat={0} lines={1}", sharedName, lines.Length);
-                    try { ReplicationObservability.Record(diag); }
-                    catch { }
-                    try { OriCoopPlugin.LogInfo(diag); }
-                    catch { }
-                }
-                catch { }
-                return boltMat;
-            }
-            catch { }
-            return null;
-        }
-
-        // Pontos do segmento com tolerancia a versao da API (positionCount
-        // 5.5+ / numPositions / SetVertexCount) + SetPosition universal.
-        private static void SetLineSegment(LineRenderer line, Vector3 a, Vector3 b)
-        {
-            try
-            {
                 try
                 {
                     PropertyInfo p = line.GetType().GetProperty("positionCount");
                     if (p != null)
                     {
-                        p.SetValue(line, 2, null);
-                    }
-                    else
-                    {
-                        PropertyInfo n = line.GetType().GetProperty("numPositions");
-                        if (n != null)
-                        {
-                            n.SetValue(line, 2, null);
-                        }
-                        else
-                        {
-                            MethodInfo m = line.GetType().GetMethod("SetVertexCount");
-                            if (m != null)
-                            {
-                                m.Invoke(line, new object[] { 2 });
-                            }
-                        }
+                        p.SetValue(line, count, null);
+                        return;
                     }
                 }
                 catch { }
-                try { line.SetPosition(0, a); }
+                try
+                {
+                    PropertyInfo n = line.GetType().GetProperty("numPositions");
+                    if (n != null)
+                    {
+                        n.SetValue(line, count, null);
+                        return;
+                    }
+                }
                 catch { }
-                try { line.SetPosition(1, b); }
+                try
+                {
+                    MethodInfo m = line.GetType().GetMethod("SetVertexCount");
+                    if (m != null)
+                    {
+                        m.Invoke(line, new object[] { count });
+                    }
+                }
                 catch { }
             }
+            catch { }
+        }
+
+        // Driver do beam: redesenha start→cabeca a cada frame com arco
+        // lateral, scroll na textura, flash de impacto ao chegar e destroy.
+        private sealed class RealBeamDriver : MonoBehaviour
+        {
+            private LineRenderer _line;
+            private Vector3 _start;
+            private Vector3 _target;
+            private float _travel = 0.45f;
+            private float _age;
+            private int _count = 8;
+            private Material _mat;
+            private GameObject _impactPrefab;
+            private bool _done;
+
+            public void Launch(LineRenderer line, Vector3 start, Vector3 target, float travelTime, int vertexCount, GameObject impactPrefab)
+            {
+                try
+                {
+                    _line = line;
+                    _start = start;
+                    _target = target;
+                    if (travelTime > 0.05f && travelTime < 5f)
+                    {
+                        _travel = travelTime;
+                    }
+                    if (vertexCount >= 2 && vertexCount <= 32)
+                    {
+                        _count = vertexCount;
+                    }
+                    try
+                    {
+                        if (_line != null)
+                        {
+                            _mat = _line.material;
+                        }
+                    }
+                    catch { _mat = null; }
+                    _impactPrefab = impactPrefab;
+                    _age = 0f;
+                    Draw(0f);
+                }
+                catch { }
+            }
+
+            private void Update()
+            {
+                try
+                {
+                    if (_done)
+                    {
+                        return;
+                    }
+                    _age += Time.deltaTime;
+                    float t = _age / _travel;
+                    if (t >= 1f)
+                    {
+                        t = 1f;
+                        _done = true;
+                    }
+                    Draw(t);
+                    if (_mat != null)
+                    {
+                        try
+                        {
+                            Vector2 off = _mat.mainTextureOffset;
+                            off.x -= Time.deltaTime * 3f;
+                            _mat.mainTextureOffset = off;
+                        }
+                        catch { }
+                    }
+                    if (_done)
+                    {
+                        try
+                        {
+                            if (_impactPrefab != null)
+                            {
+                                SpawnImpact(_impactPrefab, _target);
+                            }
+                        }
+                        catch { }
+                        try { UnityEngine.Object.Destroy(gameObject); }
+                        catch { }
+                    }
+                }
+                catch { }
+            }
+
+            private void Draw(float t)
+            {
+                try
+                {
+                    if (_line == null)
+                    {
+                        return;
+                    }
+                    Vector3 head = _start + (_target - _start) * t;
+                    Vector3 dir = _target - _start;
+                    Vector3 side = new Vector3(0f, 0f, 0f);
+                    try
+                    {
+                        if (dir.sqrMagnitude > 0.0001f)
+                        {
+                            dir.Normalize();
+                            side = new Vector3(-dir.y, dir.x, 0f);
+                        }
+                    }
+                    catch { }
+                    float span = 0.8f;
+                    try
+                    {
+                        float dist = Vector3.Distance(_start, _target);
+                        if (dist > 0.01f && dist < 3f)
+                        {
+                            span = dist * 0.3f;
+                        }
+                    }
+                    catch { }
+                    for (int i = 0; i < _count; i++)
+                    {
+                        float f = (_count <= 1) ? 0f : ((float)i / (float)(_count - 1));
+                        Vector3 p = _start + (head - _start) * f;
+                        try
+                        {
+                            float bow = Mathf.Sin(f * Mathf.PI) * span;
+                            p += side * bow;
+                        }
+                        catch { }
+                        try { _line.SetPosition(i, p); }
+                        catch { }
+                    }
+                }
+                catch { }
+            }
+        }
+
+        private static void SpawnImpact(GameObject fxPrefab, Vector3 at)
+        {
+            GameObject fx = null;
+            try { fx = UnityEngine.Object.Instantiate(fxPrefab) as GameObject; }
+            catch { fx = null; }
+            if (fx == null)
+            {
+                return;
+            }
+            try { fx.SetActive(false); }
+            catch { }
+            try { fx.transform.parent = null; }
+            catch { }
+            StripVisualClone(fx, true);
+            try { IsolateMaterials(fx); }
+            catch { }
+            try { fx.transform.position = at; }
+            catch { }
+            try { fx.SetActive(true); }
+            catch { }
+            try
+            {
+                ParticleSystem[] systems = fx.GetComponentsInChildren<ParticleSystem>();
+                if (systems != null)
+                {
+                    for (int i = 0; i < systems.Length; i++)
+                    {
+                        if (systems[i] == null)
+                        {
+                            continue;
+                        }
+                        try { systems[i].Play(); }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+            try { FadeAndDie.Attach(fx, 0.4f); }
             catch { }
         }
 
@@ -939,76 +1249,6 @@ namespace OriCoopBepInEx.Client
                             }
                             catch { }
                         }
-                    }
-                }
-                catch { }
-            }
-        }
-
-        private sealed class RealShotMover : MonoBehaviour
-        {
-            private Vector3 _velocity;
-            private Vector3 _start;
-            private float _age;
-            private float _lifetime = 0.8f;
-            private float _range = 14f;
-            private Material _boltMat;
-            private float _scroll = 3f;
-
-            public void SetBoltMaterial(Material mat)
-            {
-                try { _boltMat = mat; }
-                catch { }
-            }
-
-            public void Launch(Vector3 direction, float speed, float lifetime, float range)
-            {
-                try
-                {
-                    _start = transform.position;
-                    Vector3 dir = direction;
-                    if (dir.sqrMagnitude < 0.0001f)
-                    {
-                        dir = new Vector3(1f, 0f, 0f);
-                    }
-                    dir.Normalize();
-                    _velocity = dir * speed;
-                    _age = 0f;
-                    if (lifetime > 0f)
-                    {
-                        _lifetime = lifetime;
-                    }
-                    if (range > 0f)
-                    {
-                        _range = range;
-                    }
-                }
-                catch { }
-            }
-
-            private void Update()
-            {
-                try
-                {
-                    float dt = Time.deltaTime;
-                    transform.position += _velocity * dt;
-                    _age += dt;
-                    // Fluxo de energia no material clonado (nunca vaza para
-                    // o jogo local — o material e por-tiro).
-                    if (_boltMat != null)
-                    {
-                        try
-                        {
-                            Vector2 off = _boltMat.mainTextureOffset;
-                            off.x -= dt * _scroll;
-                            _boltMat.mainTextureOffset = off;
-                        }
-                        catch { }
-                    }
-                    if (_age >= _lifetime || Vector3.Distance(transform.position, _start) >= _range)
-                    {
-                        try { UnityEngine.Object.Destroy(gameObject); }
-                        catch { }
                     }
                 }
                 catch { }

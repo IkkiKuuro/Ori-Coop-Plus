@@ -277,7 +277,7 @@ namespace OriCoopDedicatedServer.Net.Game
 
         /// <summary>
         /// Evento de personagem (fase 3, piloto Spirit Flame, D-09): valida o
-        /// corpo minimo de 37 bytes + marcador 19, aplica o gate dedicado de
+        /// corpo minimo de 49 bytes v2 + marcador 19, aplica o gate dedicado de
         /// eventos (drop-old wrap-safe por remetente, dominio disjunto do de
         /// snapshots) e reemite os bytes originais do datagrama sem
         /// reconstrucao — clientId + seq do remetente preservados, sem
@@ -292,8 +292,11 @@ namespace OriCoopDedicatedServer.Net.Game
             float originX;
             float originY;
             float originZ;
+            float aimX;
+            float aimY;
+            float aimZ;
             long timestampTicks;
-            if (!TryParsePlayerEvent(payload, out kind, out dirX, out dirY, out dirZ, out originX, out originY, out originZ, out timestampTicks))
+            if (!TryParsePlayerEvent(payload, out kind, out dirX, out dirY, out dirZ, out originX, out originY, out originZ, out aimX, out aimY, out aimZ, out timestampTicks))
             {
                 _log.Log(ServerLogLevel.Warning, "GAME", "PLAYER_EVENT truncado de " + sender.Id + " (drop)");
                 return;
@@ -709,14 +712,17 @@ namespace OriCoopDedicatedServer.Net.Game
         }
 
         /// <summary>
-        /// Corpo PLAYER_EVENT 19 (ordem congelada, 37 bytes, D-11):
+        /// Corpo PLAYER_EVENT 19 (ordem congelada, 49 bytes v2, D-11):
         /// marcador 19 + kind byte + dir(3 floats) + origin(3 floats) +
-        /// timestamp long. Identidade NUNCA no corpo (clientId do header).
-        /// Espelho de construcao para testes (SmokeProbe round-trip).
+        /// aim(3 floats, v2) + timestamp long. Identidade NUNCA no corpo
+        /// (clientId do header). Espelho de construcao para testes
+        /// (SmokeProbe round-trip). v2 quebra o fio one-way: 37B antigos
+        /// sao descartados pelo MinBodyLength (mesmo build, regra D-10).
         /// </summary>
         public static byte[] BuildPlayerEventPayload(
             byte kind, float dirX, float dirY, float dirZ,
-            float originX, float originY, float originZ, long timestampTicks)
+            float originX, float originY, float originZ,
+            float aimX, float aimY, float aimZ, long timestampTicks)
         {
             byte[] payload = new byte[PlayerEventProtocol.BodySize];
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, 4), (int)PacketType.PLAYER_EVENT);
@@ -727,13 +733,17 @@ namespace OriCoopDedicatedServer.Net.Game
             WriteFloat(payload, PlayerEventProtocol.OffOrigin, originX);
             WriteFloat(payload, PlayerEventProtocol.OffOrigin + 4, originY);
             WriteFloat(payload, PlayerEventProtocol.OffOrigin + 8, originZ);
+            WriteFloat(payload, PlayerEventProtocol.OffAim, aimX);
+            WriteFloat(payload, PlayerEventProtocol.OffAim + 4, aimY);
+            WriteFloat(payload, PlayerEventProtocol.OffAim + 8, aimZ);
             BinaryPrimitives.WriteInt64LittleEndian(payload.AsSpan(PlayerEventProtocol.OffTimestamp, 8), timestampTicks);
             return payload;
         }
 
         public static bool TryParsePlayerEvent(
             byte[] payload, out byte kind, out float dirX, out float dirY, out float dirZ,
-            out float originX, out float originY, out float originZ, out long timestampTicks)
+            out float originX, out float originY, out float originZ,
+            out float aimX, out float aimY, out float aimZ, out long timestampTicks)
         {
             kind = 0;
             dirX = 0f;
@@ -742,6 +752,9 @@ namespace OriCoopDedicatedServer.Net.Game
             originX = 0f;
             originY = 0f;
             originZ = 0f;
+            aimX = 0f;
+            aimY = 0f;
+            aimZ = 0f;
             timestampTicks = 0L;
             if (payload == null || payload.Length < PlayerEventProtocol.MinBodyLength)
             {
@@ -758,6 +771,9 @@ namespace OriCoopDedicatedServer.Net.Game
             originX = ReadFloat(payload, PlayerEventProtocol.OffOrigin);
             originY = ReadFloat(payload, PlayerEventProtocol.OffOrigin + 4);
             originZ = ReadFloat(payload, PlayerEventProtocol.OffOrigin + 8);
+            aimX = ReadFloat(payload, PlayerEventProtocol.OffAim);
+            aimY = ReadFloat(payload, PlayerEventProtocol.OffAim + 4);
+            aimZ = ReadFloat(payload, PlayerEventProtocol.OffAim + 8);
             timestampTicks = BinaryPrimitives.ReadInt64LittleEndian(payload.AsSpan(PlayerEventProtocol.OffTimestamp, 8));
             return true;
         }

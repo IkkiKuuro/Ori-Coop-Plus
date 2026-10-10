@@ -536,7 +536,7 @@ internal static class Program
 
     /// <summary>
     /// Caso packet-19 (fase 3, D-08/D-09): prova no fio que PLAYER_EVENT
-    /// segue as convencoes de framing (corpo 37B com marcador 19,
+    /// segue as convencoes de framing (corpo 49B v2 com marcador 19,
     /// identidade no header, blind relay) na classe unreliable correta.
     /// Duas sessoes prontas A e B; A envia datagrama 19 com payload fixo
     /// conhecido e seq N; B recebe bytes identicos; A nao recebe eco;
@@ -566,9 +566,9 @@ internal static class Program
             DrainAndAck(clientB, server, idB, tokenB, ref seqB, 1200);
 
             byte[] body = BuildPlayerEventBody();
-            if (body.Length != 37 || ReadI32(body, 0) != PlayerEventId)
+            if (body.Length != 49 || ReadI32(body, 0) != PlayerEventId)
             {
-                Console.WriteLine("FAIL player-event (corpo fora do contrato 37B/marcador 19)");
+                Console.WriteLine("FAIL player-event (corpo fora do contrato 49B/marcador 19)");
                 return false;
             }
             uint eventSeq = ++seqA;
@@ -1808,9 +1808,9 @@ internal static class Program
 
     private static byte[] BuildPlayerEventBody()
     {
-        // Corpo congelado 37B (ordem D-11): marcador 19 + kind byte +
-        // dir(3 floats) + origin(3 floats) + timestamp long. Payload fixo
-        // conhecido para comparacao byte-identica no relay.
+        // Corpo congelado 49B v2 (ordem D-11 + aim): marcador 19 + kind byte +
+        // dir(3 floats) + origin(3 floats) + aim(3 floats) + timestamp long.
+        // Payload fixo conhecido para comparacao byte-identica no relay.
         using (var stream = new MemoryStream())
         {
             WriteI32Stream(stream, PlayerEventId);
@@ -1821,6 +1821,9 @@ internal static class Program
             WriteF32Stream(stream, 10.5f);
             WriteF32Stream(stream, 20.25f);
             WriteF32Stream(stream, -2.5f);
+            WriteF32Stream(stream, 12.0f);
+            WriteF32Stream(stream, 21.5f);
+            WriteF32Stream(stream, -2.0f);
             WriteI64Stream(stream, 1234567890123456789L);
             return stream.ToArray();
         }

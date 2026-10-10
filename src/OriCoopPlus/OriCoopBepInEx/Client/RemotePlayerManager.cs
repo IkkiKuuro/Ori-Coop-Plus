@@ -14,6 +14,7 @@ namespace OriCoopBepInEx.Client
         public RemotePlayerManager()
         {
             PlayerEventCore.RegisterHandler((byte)PlayerEventKind.SpiritFlame, HandleSpiritFlame);
+            PlayerEventCore.RegisterHandler((byte)PlayerEventKind.ChargedFlame, HandleChargedFlame);
         }
 
         public void HandleSnapshot(PlayerSnapshot snapshot)
@@ -104,7 +105,19 @@ namespace OriCoopBepInEx.Client
             }
             Vector3 origin = new Vector3(data.Origin.X, data.Origin.Y, data.Origin.Z);
             Vector3 direction = new Vector3(data.Direction.X, data.Direction.Y, data.Direction.Z);
-            puppet.PlaySpiritFlameVisual(origin, direction);
+            Vector3 aim = new Vector3(data.Aim.X, data.Aim.Y, data.Aim.Z);
+            puppet.PlaySpiritFlameVisual(origin, direction, aim);
+        }
+
+        private void HandleChargedFlame(int senderId, SpiritFlameEventData data)
+        {
+            RemotePlayerPuppet puppet;
+            if (!_puppets.TryGetValue(senderId, out puppet) || puppet == null)
+            {
+                return;
+            }
+            Vector3 origin = new Vector3(data.Origin.X, data.Origin.Y, data.Origin.Z);
+            puppet.PlayChargedVisual(origin);
         }
 
         public void RemovePlayer(int playerId)        {

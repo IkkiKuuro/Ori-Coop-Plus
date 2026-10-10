@@ -448,8 +448,8 @@ namespace OriCoopBepInEx.Networking
         }
 
         // Evento de personagem (fase 3, piloto Spirit Flame, D-09): corpo com
-        // marcador 19 + kind + direcao + origem + timestamp (37 bytes,
-        // PlayerEventProtocol), enviado unreliable com flags 0 — nunca
+        // marcador 19 + kind + direcao + origem + mira + timestamp (49 bytes
+        // v2, PlayerEventProtocol), enviado unreliable com flags 0 — nunca
         // SendReliable (retry de 250 ms represaria tiros visuais). Dominio
         // de sequencia proprio (SendEventSystem + _eventSendSeq): cada
         // disparo envia na hora, sem throttle no piloto (D-12).
@@ -471,6 +471,9 @@ namespace OriCoopBepInEx.Networking
                 writer.Write(data.Origin.X);
                 writer.Write(data.Origin.Y);
                 writer.Write(data.Origin.Z);
+                writer.Write(data.Aim.X);
+                writer.Write(data.Aim.Y);
+                writer.Write(data.Aim.Z);
                 writer.Write(data.TimestampTicks);
                 writer.Flush();
                 SendEventSystem((int)PacketType.PLAYER_EVENT, body.ToArray(), 0);
@@ -881,27 +884,32 @@ namespace OriCoopBepInEx.Networking
                     {
                         return;
                     }
-                    // Corpo fixo de 33 bytes apos o marcador: validacao de
-                    // comprimento antes de CADA leitura (regra 4 do
+                    // Corpo fixo de 45 bytes apos o marcador (v2 49B): validacao
+                    // de comprimento antes de CADA leitura (regra 4 do
                     // protocolo, T-03-01). Truncacao lanca
                     // InvalidDataException com mensagem do pacote 19 —
                     // contida pelo catch por-pacote do ReceiveLoop, o sync
                     // nunca para.
-                    ExpectRemaining(reader, 33, "PLAYER_EVENT");
+                    ExpectRemaining(reader, 45, "PLAYER_EVENT");
                     byte kind = reader.ReadByte();
-                    ExpectRemaining(reader, 32, "PLAYER_EVENT");
+                    ExpectRemaining(reader, 44, "PLAYER_EVENT");
                     Vector3Data direction = new Vector3Data(
                         reader.ReadSingle(),
                         reader.ReadSingle(),
                         reader.ReadSingle());
-                    ExpectRemaining(reader, 20, "PLAYER_EVENT");
+                    ExpectRemaining(reader, 32, "PLAYER_EVENT");
                     Vector3Data origin = new Vector3Data(
+                        reader.ReadSingle(),
+                        reader.ReadSingle(),
+                        reader.ReadSingle());
+                    ExpectRemaining(reader, 20, "PLAYER_EVENT");
+                    Vector3Data aim = new Vector3Data(
                         reader.ReadSingle(),
                         reader.ReadSingle(),
                         reader.ReadSingle());
                     ExpectRemaining(reader, 8, "PLAYER_EVENT");
                     long timestamp = reader.ReadInt64();
-                    SpiritFlameEventData data = new SpiritFlameEventData(kind, direction, origin, timestamp);
+                    SpiritFlameEventData data = new SpiritFlameEventData(kind, direction, origin, aim, timestamp);
                     RaisePlayerEvent(headerClientId, data);
                 }
                 else if (packetId == (int)PacketType.TELEPORT_REQUEST)

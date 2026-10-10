@@ -22,6 +22,9 @@ para outros jogos.
 - Consulte [auditoria do assembly do jogo](game-assembly-audit.md) para o
   fingerprint REA do `Assembly-CSharp.dll` e as divergências relay-sem-aplicação
   auditadas em 2026-10-10.
+- Consulte [sincronização do mundo](world-sync.md) para a investigação de
+  alavancas, portas-orbe, eventos globais (`MoonGuid`, fios 11/12/14,
+  semântica legada e o que falta implementar).
 - Consulte [scaffolding BepInEx](bepinex-architecture.md) para a arquitetura do
   novo plugin, suas camadas e os pontos ainda dependentes de confirmação no
   `Assembly-CSharp`.
