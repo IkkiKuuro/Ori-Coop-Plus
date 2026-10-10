@@ -484,12 +484,18 @@ namespace OriCoopBepInEx.Client
                 // So clipes do Sein (proveniencia acima), first-wins (nunca
                 // sobrescreve entrada calibrada via F8). Aplica a ambos os
                 // niveis outer/inner como a estrutura exata acima.
+                // R3: exclui granada — "grenadeThrowDown" contem "throw" mas
+                // e de outra habilidade; sem o filtro o corpo toca anim
+                // errada (D-13 exige o mesmo clipe). Sem match honesto, o
+                // corpo segura a pose (fail-closed D-15); o ataque visivel
+                // e o ShootAnimation do orbe.
                 if (!s_stateClips.ContainsKey(ActionVisualState.AimThrow))
                 {
                     try
                     {
                         string outerLower = clip.name != null ? clip.name.ToLower() : string.Empty;
-                        bool outerMatch = outerLower.Contains("aim") || outerLower.Contains("throw");
+                        bool outerMatch = (outerLower.Contains("aim") || outerLower.Contains("throw"))
+                            && !outerLower.Contains("grenade");
                         string innerLower = string.Empty;
                         try
                         {
@@ -500,7 +506,8 @@ namespace OriCoopBepInEx.Client
                             }
                         }
                         catch { }
-                        bool innerMatch = innerLower.Contains("aim") || innerLower.Contains("throw");
+                        bool innerMatch = (innerLower.Contains("aim") || innerLower.Contains("throw"))
+                            && !innerLower.Contains("grenade");
                         if ((outerMatch || innerMatch) && !s_stateClips.ContainsKey(ActionVisualState.AimThrow))
                         {
                             s_stateClips[ActionVisualState.AimThrow] = clip;

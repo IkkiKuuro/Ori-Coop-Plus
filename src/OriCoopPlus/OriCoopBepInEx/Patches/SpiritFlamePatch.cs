@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
 using HarmonyLib;
+using OriCoopBepInEx.Client;
 using OriCoopBepInEx.Domain;
 using OriCoopBepInEx.Events;
 using OriCoopBepInEx.Plugin;
@@ -46,6 +47,30 @@ namespace OriCoopBepInEx.Patches
             {
                 return;
             }
+            // Cache do prefab real (R3): esta instancia e a habilidade exata
+            // que disparou — entrega o prefab sem busca. O espelho remoto
+            // (SeinVisualMirror.ResolveProjectilePrefab) usa esse cache.
+            // Reflexao no tipo real: as subclasses de CharacterState sao
+            // irmas (cast direto nao compila — CS0039); CurrentSpiritFlame
+            // vive na subclasse concreta (padrao ResolveOwner abaixo).
+            try
+            {
+                PropertyInfo curProp = __instance.GetType().GetProperty(
+                    "CurrentSpiritFlame",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (curProp != null)
+                {
+                    object flameObj = null;
+                    try { flameObj = curProp.GetValue(__instance, null); }
+                    catch { flameObj = null; }
+                    SpiritFlame flame = flameObj as SpiritFlame;
+                    if (flame != null && flame.Projectile != null)
+                    {
+                        SeinVisualMirror.NoteLocalPrefabs(flame.Projectile);
+                    }
+                }
+            }
+            catch { }
             float dx = faceLeft ? -1f : 1f;
             Vector3Data direction = new Vector3Data(dx, 0f, 0f);
             Vector3Data originData = new Vector3Data(origin.x, origin.y, origin.z);

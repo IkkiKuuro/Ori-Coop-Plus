@@ -20,6 +20,26 @@ namespace OriCoopBepInEx.Client
 
         private static GameObject s_cachedProjectilePrefab;
 
+        // Prefab anotado pelo patch local (R3): o Postfix de
+        // ThrowSpiritFlames roda na instancia exata que disparou e entrega
+        // o prefab sem busca. Tem precedencia sobre a resolucao por
+        // componentes. Limitacao conhecida: e o visual do nivel do jogador
+        // local; o remoto pode ter nivel (e visual) distinto — nuance
+        // aceita, muito acima do fake anterior.
+        private static GameObject s_localShotPrefab;
+
+        public static void NoteLocalPrefabs(GameObject projectilePrefab)
+        {
+            try
+            {
+                if (projectilePrefab != null)
+                {
+                    s_localShotPrefab = projectilePrefab;
+                }
+            }
+            catch { }
+        }
+
         public static SeinVisualMirror AttachTo(GameObject puppetRoot, int playerId)
         {
             if (puppetRoot == null)
@@ -295,6 +315,15 @@ namespace OriCoopBepInEx.Client
         {
             try
             {
+                // 1. Prefab anotado pelo tiro local (exato, sem busca).
+                try
+                {
+                    if (s_localShotPrefab != null)
+                    {
+                        return s_localShotPrefab;
+                    }
+                }
+                catch { }
                 if (s_cachedProjectilePrefab != null)
                 {
                     return s_cachedProjectilePrefab;
@@ -311,9 +340,11 @@ namespace OriCoopBepInEx.Client
                 catch { ability = null; }
                 if (ability == null)
                 {
+                    // Habilidades sao CharacterState (nao MonoBehaviour de
+                    // cena): varre os filhos antes de desistir.
                     try
                     {
-                        SeinStandardSpiritFlameAbility[] all = sein.GetComponents<SeinStandardSpiritFlameAbility>();
+                        SeinStandardSpiritFlameAbility[] all = sein.GetComponentsInChildren<SeinStandardSpiritFlameAbility>(true);
                         if (all != null)
                         {
                             for (int i = 0; i < all.Length; i++)
