@@ -188,7 +188,9 @@ real do Sein):
 - R3-C1 fix 4 deployed (DLL rebuild, 2026-10-10): origem do evento = posicao do ORBE (StartPosition real), fallback corpo. Requer restart dos 2 clientes.
 - R3-C1 retest 4 (2026-10-10): bolt VISIVEL mas nasce afastado da bola (`diag-bolt mat=UberShaderMaterial lines=1`). Root cause: origem = posicao do CORPO; o tiro real parte do ORBE. Charge segue sem nada (G-03-6).
 - R3-C1 fix 5 (fio v2 + beam + charge, DLL 111616B + servidor, 2026-10-10): REA confirmou beam orbe→cabeca com arco + mira em ClosestAttackables + charge = ReleaseChargeBurst. Payload 37B→49B (+aim), kind 2 ChargedFlame; patch le mira travada (fallback facing*5); espelho desenha beam orbe→mira com arco + impacto + som; charge radial com prefab ChargeFlameBurst + som. Probe SMOKE_OK 49B. QUEBRA ONE-WAY: servidor + 2 clientes restartados juntos. G-03-6 em teste.
-- R3-C1 retest 5: pending
+- R3-C1 retest 5 (2026-10-10, fio v2): beam VIAJA orbe→alvo, mas ao chegar buga (blob rosa persistente, print) em vez de sumir como no vanilla. Charge: veredito pendente.
+- R3-C1 fix 6 deployed (DLL 112640B, 2026-10-10): pontos assados limpos ate 32 + count real lido de volta (`diag-beam n=`); fade em _TintColor (particulas U4); TransientJanitor como 2a rede em beam/throw/impact/burst. Requer restart dos 2 clientes.
+- R3-C1 retest 6: pending
 - R3-C2 (C2 B→A, simetria): pending
 - R3-C3 (C3 sem eco): pending
 - R3-C2 (C2 B→A, simetria): pending

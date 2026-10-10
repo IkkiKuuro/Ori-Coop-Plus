@@ -405,6 +405,8 @@ namespace OriCoopBepInEx.Client
                 catch { }
                 try { FadeAndDie.Attach(burst, 0.6f); }
                 catch { }
+                try { TransientJanitor.Attach(burst, 1.5f); }
+                catch { }
                 try
                 {
                     object sp = null;
@@ -634,6 +636,44 @@ namespace OriCoopBepInEx.Client
                 }
             }
             catch { }
+            // Segunda rede: teto absoluto de vida mesmo se o driver falhar.
+            try { TransientJanitor.Attach(shot, travelTime + 2f); }
+            catch { }
+        }
+
+        private static int ReadVertexCount(LineRenderer line)
+        {
+            try
+            {
+                try
+                {
+                    PropertyInfo p = line.GetType().GetProperty("positionCount");
+                    if (p != null)
+                    {
+                        object v = p.GetValue(line, null);
+                        if (v is int)
+                        {
+                            return (int)v;
+                        }
+                    }
+                }
+                catch { }
+                try
+                {
+                    PropertyInfo n = line.GetType().GetProperty("numPositions");
+                    if (n != null)
+                    {
+                        object v = n.GetValue(line, null);
+                        if (v is int)
+                        {
+                            return (int)v;
+                        }
+                    }
+                }
+                catch { }
+            }
+            catch { }
+            return -1;
         }
 
         private static void SetVertexCount(LineRenderer line, int count)
@@ -683,6 +723,46 @@ namespace OriCoopBepInEx.Client
 
         // Driver do beam: redesenha start→cabeca a cada frame com arco
         // lateral, scroll na textura, flash de impacto ao chegar e destroy.
+        // Segunda rede de ciclo de vida: teto absoluto; destroi mesmo se o
+        // driver/fade principal falhar (morte dos flashes era dirigida por
+        // script — sem ela, qualquer falha vira blob eterno).
+        private sealed class TransientJanitor : MonoBehaviour
+        {
+            private float _life = 1f;
+            private float _age;
+
+            public static void Attach(GameObject go, float life)
+            {
+                try
+                {
+                    if (go == null)
+                    {
+                        return;
+                    }
+                    TransientJanitor j = go.AddComponent<TransientJanitor>();
+                    if (j != null && life > 0f && life < 30f)
+                    {
+                        j._life = life;
+                    }
+                }
+                catch { }
+            }
+
+            private void Update()
+            {
+                try
+                {
+                    _age += Time.deltaTime;
+                    if (_age >= _life)
+                    {
+                        try { UnityEngine.Object.Destroy(gameObject); }
+                        catch { }
+                    }
+                }
+                catch { }
+            }
+        }
+
         private sealed class RealBeamDriver : MonoBehaviour
         {
             private LineRenderer _line;
@@ -720,7 +800,37 @@ namespace OriCoopBepInEx.Client
                     catch { _mat = null; }
                     _impactPrefab = impactPrefab;
                     _age = 0f;
+                    // Limpa pontos assados do prefab ATE 32: se o set de count
+                    // falhar no runtime, pontos alem do count ficariam fixos
+                    // no mundo (rastro gigante = "animacao bugada" do R3-C1).
+                    try
+                    {
+                        int actual = ReadVertexCount(_line);
+                        if (actual >= 2 && actual <= 64)
+                        {
+                            _count = actual;
+                        }
+                    }
+                    catch { }
+                    try
+                    {
+                        for (int i = 0; i < 32; i++)
+                        {
+                            try { _line.SetPosition(i, start); }
+                            catch { break; }
+                        }
+                    }
+                    catch { }
                     Draw(0f);
+                    try
+                    {
+                        string diag = string.Format("[EVENT] diag-beam n={0}", _count);
+                        try { ReplicationObservability.Record(diag); }
+                        catch { }
+                        try { OriCoopPlugin.LogInfo(diag); }
+                        catch { }
+                    }
+                    catch { }
                 }
                 catch { }
             }
@@ -855,6 +965,8 @@ namespace OriCoopBepInEx.Client
             catch { }
             try { FadeAndDie.Attach(fx, 0.4f); }
             catch { }
+            try { TransientJanitor.Attach(fx, 1.0f); }
+            catch { }
         }
 
         private static void SpawnThrowEffect(GameObject fxPrefab, Vector3 origin)
@@ -900,6 +1012,8 @@ namespace OriCoopBepInEx.Client
             try { IsolateMaterials(fx); }
             catch { }
             try { FadeAndDie.Attach(fx, 0.35f); }
+            catch { }
+            try { TransientJanitor.Attach(fx, 0.8f); }
             catch { }
             try
             {
@@ -1168,10 +1282,10 @@ namespace OriCoopBepInEx.Client
             catch { }
         }
 
-        // Some o flash do throw em ~0.35s e destroi: com materiais ja
-        // isolados pelo chamador, o fade nunca vaza para o jogo local.
-        // Particulas nao entram no fade (renderer proprio) — auto-morrem
-        // com a destruicao do objeto.
+        // Some o flash (materiais ja isolados): fade em _Color E _TintColor
+        // (particulas Unity 4 usam _TintColor — so _Color era no-op) e
+        // destroy no fim. Sem o fade do driver original, o flash congelava
+        // no brilho maximo ("bloom piscando" do R3-C1).
         private sealed class FadeAndDie : MonoBehaviour
         {
             private Material[] _mats;
@@ -1245,6 +1359,16 @@ namespace OriCoopBepInEx.Client
                                     Color c = m.color;
                                     c.a = a;
                                     m.color = c;
+                                }
+                            }
+                            catch { }
+                            try
+                            {
+                                if (m.HasProperty("_TintColor"))
+                                {
+                                    Color tc = m.GetColor("_TintColor");
+                                    tc.a = a;
+                                    m.SetColor("_TintColor", tc);
                                 }
                             }
                             catch { }
