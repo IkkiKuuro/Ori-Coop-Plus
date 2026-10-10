@@ -82,6 +82,13 @@ A arquitetura do cliente BepInEx está documentada em
 - O **cliente** cria e gerencia entidades remotas desacopladas, assegura
   visibilidade contínua do corpo/mesh, aplica interpolação de posições e estados
   determinísticos de animação.
+- O **orbe seguidor (visual do Sein)** é `Game.Characters.Ori` (estático,
+  auto-registrado; nunca busca por string) — `Game.Characters.Sein` é o avatar
+  do jogador. O visual remoto do Spirit Flame é espelho real do Sein: clone
+  visual do orbe por puppet + prefab real `SpiritFlame.Projectile` instanciado
+  visual-only (sem dano/colisão) + som/efeito reais de disparo; clipe de ataque
+  do corpo segue best-effort. Efeito em jogo ainda **a confirmar** (R3 em
+  `docs/operations.md`).
 - O **código compartilhado** define os identificadores e estruturas de dados que
   precisam ser iguais nos dois lados.
 

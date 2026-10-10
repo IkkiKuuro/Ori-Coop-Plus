@@ -16,7 +16,8 @@ controlavel; menu e prologo com Naru nao representam o fluxo normal do mod.
 | Conceito | Uso no mod |
 | --- | --- |
 | Ori/player local | personagem controlado pelo cliente atual |
-| jogador remoto | representacao visual e estado recebido de outro cliente |
+| jogador remoto | representacao visual e estado recebido de outro cliente; visual do Spirit Flame = espelho real do Sein (orbe + prefab real visual-only, sem dano/colisao — em jogo ainda **a confirmar**) |
+| orbe seguidor (visual do Sein) | `Game.Characters.Ori` (estatico, auto-registrado; nunca busca por string) — `Game.Characters.Sein` e o avatar do jogador |
 | habilidade | eventos de habilidades, incluindo `Spirit` e `Stomp` |
 | pickup | itens coletaveis como keystone, skill point, vida, energia, map stone e orbs |
 | porta/alavanca | objetos de mundo sincronizaveis quando a opcao esta ativa |

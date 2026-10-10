@@ -109,6 +109,7 @@ namespace OriCoopBepInEx.Client
             try
             {
                 puppet = root.AddComponent<RemotePlayerPuppet>();
+                try { SeinVisualMirror.AttachTo(root, playerId); } catch { }
                 puppet.Setup(playerId, nickname);
             }
             catch (Exception ex)

@@ -543,6 +543,38 @@ a cada rodada): estimativa de tiros/s no spam + leitura da linha
 Resultado da rodada: **a confirmar** — sem 2 clientes neste ambiente;
 rodar e anotar aqui data, bytes da DLL e pass/fail por check (C1–C6).
 
+### R3 — espelho real do Sein (2026-10-10, manual — a confirmar)
+
+Pivot confirmado por inspecao binaria: o visual remoto do Spirit Flame
+deixa os fakes artesanais (particula/som por keyword, projetil quad de
+scratch) e passa a espelho real do Sein — clone visual do orbe por
+puppet + prefab real `SpiritFlame.Projectile` instanciado visual-only
+(`SpiritFlameProjectile`/dano removidos) + `ThrowSound` real via
+`SoundProvider` + `ThrowEffectGameObject` real. Sem mudanca de fio
+(packet 19 intacto) nem mudanca de servidor; `docs/protocol.md` intacto
+(sem mudanca de contrato).
+
+Comportamento esperado: orbe seguidor visivel em cada puppet; por
+disparo: `ShootAnimation` do orbe + projetil real com `LineRenderer` +
+som real de disparo + efeito de disparo; zero dano/colisao; clipe de
+ataque do corpo segue best-effort. Gaps G-03-4 (clip-desconhecido) e
+G-03-5 (nada renderiza) em IN-FIX neste rework, nao aguardando
+diagnostico.
+
+Pre-requisitos: nova DLL implantada em
+`<ORI_DIR>\BepInEx\plugins\`, config padrao, save controlavel nos dois
+clientes, par cliente+servidor do mesmo build.
+
+- [ ] C1 — A atira, B ve (orbe + projetil real + som + efeito, sem dano): **a confirmar**
+- [ ] C2 — B atira, A ve (simetria do relay): **a confirmar**
+- [ ] C3 — sem eco (enviado so no atirador, recebido/aplicado so no remoto): **a confirmar**
+- [ ] C4 — spam sob movimento (movimento suave, sem supressao de snapshot): **a confirmar**
+- [ ] C5 — tipo desconhecido segura pose (mantem ultima anim): **a confirmar**
+- [ ] C6 — desconexao/reconexao limpa (puppet some/respawna, eventos voltam): **a confirmar**
+
+Resultado da rodada R3: **a confirmar** — anotar aqui data, bytes da DLL
+e pass/fail por check (C1–C6).
+
 1. **Compilacao:**
    - `OriCoopDedicatedServer.csproj` compilado com sucesso (.NET 8.0 Release).
    - `OriCoopBepInEx.dll` compilado via `build.ps1` com 23 arquivos de origem (Release, 53.760 bytes).

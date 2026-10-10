@@ -8,7 +8,11 @@ updated: 2026-10-06
 
 ## Current Test
 
-[testing complete]
+number: R3-C1
+name: C1 no espelho real (A atira, B ve)
+expected: |
+  Puppet de A em B com orbe seguidor visivel; a cada tiro: ShootAnimation no orbe + projetil real (LineRenderer, com bloom) em linha reta + som real + efeito de disparo, sem dano/colisao. Log de B: fase=recebido + aplicado=espelho-real por tiro.
+awaiting: user response
 
 ## Tests
 
@@ -58,6 +62,13 @@ Deployed build verified current (build output == Ori DE plugin dir, 100864B, sam
 - DELIVERY CONFIRMED: P2 log shows `fase=recebido` per shot, `EvRecv/EvApplied` moving (7/7, 5/5), `EvDropped: 0`. G-03-3 delivery half resolved; shooter-side no-echo check still pending.
 - CLIP STILL UNKNOWN: `aplicado=manteve-atual motivo=clip-desconhecido` on every received event despite T2 substring fallback → real attack-clip name still unmatched.
 - NOTHING RENDERS despite T1 clip-independence → effect spawn path itself broken/invisible, and `EvApplied` increments without any visible effect (counter semantics suspect).
+
+## Re-test round 2 (2026-10-10, user resumed C1-C3)
+
+- R2-T1 (C1 A→B): result: issue, reported: "fail" (no detail yet — effect/log lines pending)
+- R2-T2 (C2 B→A): result: issue, reported: "fail para todos" (2026-10-10, detail pending)
+- R2-T3 (C3 sem eco): result: issue, reported: "fail para todos" (2026-10-10, detail pending)
+- R2 status: user will propose new test plan — awaiting proposal
 
 ## Gaps
 
@@ -139,3 +150,34 @@ Deployed build verified current (build output == Ori DE plugin dir, 100864B, sam
     - "Trace the effect spawn path: null-check particle/sound assets, verify spawn transform, check for swallowed exceptions, verify whitelist survival"
     - "Fix EvApplied semantics (should count rendered effects, not received events)"
   debug_session: .planning/debug/player-event-delivery.md
+
+## Rework (espelho real do Sein) — 2026-10-10
+
+Pivot fake→real (confirmado por inspecao binaria): abandona os fakes
+artesanais (particula/som por keyword adivinhada, projetil quad de
+scratch) em favor do espelho real do Sein — clone visual do orbe
+(`Game.Characters.Ori`, estatico auto-registrado; `Game.Characters.Sein`
+e o avatar do jogador) por puppet remoto + prefab real
+`SpiritFlame.Projectile` instanciado visual-only
+(`SpiritFlameProjectile`/dano removidos) + `ThrowSound` real via
+`SoundProvider` + `ThrowEffectGameObject` real. Sem mudanca de fio
+(packet 19 intacto), sem mudanca de servidor; `docs/protocol.md` intacto.
+
+Gaps (status permanece `failed` nas linhas acima — nao alteradas; rework
+em curso, nao aguardando diagnostico):
+
+- gap_id: G-03-4
+  status: failed
+  in_fix: true
+  fix_approach: "SeinVisualMirror + real prefab visual-only"
+- gap_id: G-03-5
+  status: failed
+  in_fix: true
+  fix_approach: "SeinVisualMirror + real prefab visual-only"
+
+Re-testes R3 pendentes (detalhe em `docs/operations.md` § R3 — espelho
+real do Sein):
+
+- R3-C1 (C1 A→B no espelho real): pending — orbe + projetil real + som + efeito, sem dano
+- R3-C2 (C2 B→A, simetria): pending
+- R3-C3 (C3 sem eco): pending
