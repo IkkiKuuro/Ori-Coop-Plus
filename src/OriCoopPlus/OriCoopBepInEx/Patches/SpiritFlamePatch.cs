@@ -47,6 +47,18 @@ namespace OriCoopBepInEx.Patches
             {
                 return;
             }
+            // Origem no ORBE (R3): o tiro real parte de Ori.get_Position
+            // (StartPosition), nao do corpo — com a origem no corpo o bolt
+            // nascia ~1 unidade afastado da bola. Fallback: corpo.
+            try
+            {
+                Ori orb = Game.Characters.Ori;
+                if (orb != null && orb.gameObject != null)
+                {
+                    origin = orb.transform.position;
+                }
+            }
+            catch { }
             // Cache do prefab real (R3): esta instancia e a habilidade exata
             // que disparou — entrega o prefab sem busca. O espelho remoto
             // (SeinVisualMirror.ResolveProjectilePrefab) usa esse cache.
