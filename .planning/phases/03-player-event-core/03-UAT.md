@@ -182,7 +182,9 @@ real do Sein):
 - R3-C1 fix deployed (DLL 103424B, 2026-10-10): patch caches exact prefab from firing instance via reflection (NoteLocalPrefabs, sibling-class CS0039 → GetProperty CurrentSpiritFlame); mirror checks cache first + GetComponentsInChildren fallback; grenade excluded from AimThrow fallback (body holds pose fail-closed, orb ShootAnimation is the visible attack). C3 evidence in same log: enviado-only on shooter, recebido-only on remote, EvDropped 0.
 - R3-C1 retest (2026-10-10, DLL 103424B): parcial — som + sync OK (`aplicado=espelho-real`), mas animacao/efeitos congelados e projetil nao viaja. Root cause: LineRenderer real e dirigido por UpdateLineRenderer a cada frame; com SpiritFlameProjectile destruido ele congela (world-space: mover o transform nao adianta). Item novo: tiro carregado (charge) com seus efeitos nao aparece — caminho de charge nao hookado (gap novo, ver G-03-6).
 - R3-C1 fix 2 deployed (DLL 105472B, 2026-10-10): LineRenderers do clone desligados; quad viajante com MATERIAL real clonado (bloom) + scroll de textura no mover; Play() forcado nas particulas do ThrowEffect. Requer restart dos 2 clientes.
-- R3-C1 retest 2: pending
+- R3-C1 retest 2 (2026-10-10, DLL 105472B): parcial — projetil solto + som OK, mas bolt invisivel (so o flash parado aparece) + bloom piscando forte. Teoria unificada: material de linha nao renderiza em quad estatico (bolt invisivel); flash do throw congela no brilho max (fade era do driver) — 1 piscada por tiro. Charge segue sem nada (G-03-6 aberto, nao mexido).
+- R3-C1 fix 3 deployed (DLL 105472B rebuild, 2026-10-10): bolt = 1o LineRenderer NATIVO com segmento local (-0.4..0.9) + material clonado com scroll; demais linhas off; throw-effect com Play() + fade 0.35s (materiais isolados) + linha diag-bolt (mat/shader/lines) no log. Requer restart dos 2 clientes.
+- R3-C1 retest 3: pending
 - R3-C2 (C2 B→A, simetria): pending
 - R3-C3 (C3 sem eco): pending
 

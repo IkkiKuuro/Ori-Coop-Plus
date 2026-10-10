@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using Game;
 using OriCoopBepInEx.Diagnostics;
 using OriCoopBepInEx.Plugin;
@@ -400,17 +401,13 @@ namespace OriCoopBepInEx.Client
             try { shot.transform.parent = null; }
             catch { }
             StripVisualClone(shot, false);
-            // O LineRenderer real e redesenhado por UpdateLineRenderer a cada
-            // frame — sem o SpiritFlameProjectile (destruido acima) ele
-            // congelaria, e em world-space mover o transform nao adiantaria.
-            // Desliga os LineRenderers e viaja um quad com o MATERIAL real
-            // clonado (textura/cor/bloom verdadeiros) + scroll no mover.
-            Material boltMat = StealBoltMaterial(shot);
-            if (boltMat != null)
-            {
-                try { BuildBoltVisual(shot, boltMat); }
-                catch { }
-            }
+            // Bolt nativo: reusa o PRIMEIRO LineRenderer do prefab com um
+            // segmento estatico em espaco local (viaja com o root) + material
+            // clonado com scroll no mover. Quad artesanal com material de
+            // linha nao renderizava (shader espera o stream do line) — por
+            // isso o bolt era invisivel e so o flash parado aparecia.
+            // Demais linhas do prefab: desligadas.
+            Material boltMat = ConfigureLineBolt(shot);
             try
             {
                 shot.transform.position = origin;
@@ -437,87 +434,114 @@ namespace OriCoopBepInEx.Client
             catch { }
         }
 
-        // Rouba o material verdadeiro do LineRenderer do prefab (textura e
-        // bloom do tiro real) e desliga os LineRenderers do clone — sem o
-        // driver eles exibiriam um frame congelado. Material CLONADO: o
-        // scroll do mover nunca vaza para o jogo local.
-        private static Material StealBoltMaterial(GameObject shot)
+        // Bolt nativo com material clonado: o LineRenderer original e
+        // dirigido por UpdateLineRenderer a cada frame; sem o driver, define
+        // um segmento estatico em espaco LOCAL (o root em movimento carrega
+        // o segmento) e o mover faz scroll na textura (fluxo de energia).
+        // Material CLONADO — scroll nunca vaza para o jogo local. Retorna
+        // null se a clonagem falhar (bolt viaja estatico, sem scroll).
+        private static Material ConfigureLineBolt(GameObject shot)
         {
             try
             {
                 LineRenderer[] lines = shot.GetComponentsInChildren<LineRenderer>(true);
-                Material donor = null;
-                if (lines != null)
-                {
-                    for (int i = 0; i < lines.Length; i++)
-                    {
-                        if (lines[i] == null)
-                        {
-                            continue;
-                        }
-                        try { lines[i].enabled = false; }
-                        catch { }
-                        if (donor == null)
-                        {
-                            try { donor = lines[i].sharedMaterial; }
-                            catch { donor = null; }
-                        }
-                    }
-                }
-                if (donor == null)
+                if (lines == null || lines.Length == 0)
                 {
                     return null;
                 }
-                Material clone = null;
-                try { clone = new Material(donor); }
-                catch { clone = null; }
-                return clone;
+                Material boltMat = null;
+                string sharedName = "?";
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    LineRenderer line = lines[i];
+                    if (line == null)
+                    {
+                        continue;
+                    }
+                    if (i == 0)
+                    {
+                        try
+                        {
+                            try
+                            {
+                                if (line.sharedMaterial != null && line.sharedMaterial.name != null)
+                                {
+                                    sharedName = line.sharedMaterial.name;
+                                }
+                            }
+                            catch { }
+                            line.enabled = true;
+                            line.useWorldSpace = false;
+                            try
+                            {
+                                if (line.sharedMaterial != null)
+                                {
+                                    line.material = new Material(line.sharedMaterial);
+                                }
+                            }
+                            catch { }
+                            SetLineSegment(line, new Vector3(-0.4f, 0f, 0f), new Vector3(0.9f, 0f, 0f));
+                            try { boltMat = line.material; }
+                            catch { boltMat = null; }
+                        }
+                        catch { }
+                    }
+                    else
+                    {
+                        try { line.enabled = false; }
+                        catch { }
+                    }
+                }
+                // Diagnostico (taxa discreta de tiro): identifica o bolt real.
+                try
+                {
+                    string diag = string.Format("[EVENT] diag-bolt mat={0} lines={1}", sharedName, lines.Length);
+                    try { ReplicationObservability.Record(diag); }
+                    catch { }
+                    try { OriCoopPlugin.LogInfo(diag); }
+                    catch { }
+                }
+                catch { }
+                return boltMat;
             }
             catch { }
             return null;
         }
 
-        private static Mesh s_boltQuadMesh;
-
-        private static void BuildBoltVisual(GameObject shot, Material boltMat)
+        // Pontos do segmento com tolerancia a versao da API (positionCount
+        // 5.5+ / numPositions / SetVertexCount) + SetPosition universal.
+        private static void SetLineSegment(LineRenderer line, Vector3 a, Vector3 b)
         {
             try
             {
-                if (s_boltQuadMesh == null)
-                {
-                    Mesh mesh = new Mesh();
-                    mesh.vertices = new Vector3[]
-                    {
-                        new Vector3(-0.5f, -0.5f, 0f),
-                        new Vector3(0.5f, -0.5f, 0f),
-                        new Vector3(0.5f, 0.5f, 0f),
-                        new Vector3(-0.5f, 0.5f, 0f)
-                    };
-                    mesh.uv = new Vector2[]
-                    {
-                        new Vector2(0f, 0f),
-                        new Vector2(1f, 0f),
-                        new Vector2(1f, 1f),
-                        new Vector2(0f, 1f)
-                    };
-                    mesh.triangles = new int[] { 0, 2, 1, 0, 3, 2 };
-                    try { mesh.RecalculateNormals(); }
-                    catch { }
-                    mesh.name = "RemoteRealBoltQuad";
-                    s_boltQuadMesh = mesh;
-                }
-                GameObject bolt = new GameObject("RemoteRealBolt");
                 try
                 {
-                    MeshFilter filter = bolt.AddComponent<MeshFilter>();
-                    filter.sharedMesh = s_boltQuadMesh;
-                    MeshRenderer renderer = bolt.AddComponent<MeshRenderer>();
-                    renderer.sharedMaterial = boltMat;
-                    bolt.transform.SetParent(shot.transform, false);
-                    bolt.transform.localPosition = Vector3.zero;
-                    bolt.transform.localRotation = Quaternion.identity;
-                    bolt.transform.localScale = new Vector3(1.2f, 0.35f, 1f);
+                    PropertyInfo p = line.GetType().GetProperty("positionCount");
+                    if (p != null)
+                    {
+                        p.SetValue(line, 2, null);
+                    }
+                    else
+                    {
+                        PropertyInfo n = line.GetType().GetProperty("numPositions");
+                        if (n != null)
+                        {
+                            n.SetValue(line, 2, null);
+                        }
+                        else
+                        {
+                            MethodInfo m = line.GetType().GetMethod("SetVertexCount");
+                            if (m != null)
+                            {
+                                m.Invoke(line, new object[] { 2 });
+                            }
+                        }
+                    }
                 }
+                catch { }
+                try { line.SetPosition(0, a); }
+                catch { }
+                try { line.SetPosition(1, b); }
                 catch { }
             }
             catch { }
@@ -559,6 +583,13 @@ namespace OriCoopBepInEx.Client
                     }
                 }
             }
+            catch { }
+            // Fade rapido com materiais isolados: sem o fade dirigido pelo
+            // driver, o flash congelava no brilho maximo pela vida toda —
+            // o "bloom piscando" do R3-C1. 0.35s e some.
+            try { IsolateMaterials(fx); }
+            catch { }
+            try { FadeAndDie.Attach(fx, 0.35f); }
             catch { }
             try
             {
@@ -825,6 +856,93 @@ namespace OriCoopBepInEx.Client
                 }
             }
             catch { }
+        }
+
+        // Some o flash do throw em ~0.35s e destroi: com materiais ja
+        // isolados pelo chamador, o fade nunca vaza para o jogo local.
+        // Particulas nao entram no fade (renderer proprio) — auto-morrem
+        // com a destruicao do objeto.
+        private sealed class FadeAndDie : MonoBehaviour
+        {
+            private Material[] _mats;
+            private float _life = 0.35f;
+            private float _age;
+
+            public static void Attach(GameObject go, float life)
+            {
+                try
+                {
+                    FadeAndDie f = go.AddComponent<FadeAndDie>();
+                    if (f == null)
+                    {
+                        return;
+                    }
+                    if (life > 0f)
+                    {
+                        f._life = life;
+                    }
+                    try
+                    {
+                        Renderer[] rs = go.GetComponentsInChildren<Renderer>(true);
+                        if (rs != null)
+                        {
+                            Material[] mats = new Material[rs.Length];
+                            for (int i = 0; i < rs.Length; i++)
+                            {
+                                if (rs[i] == null || rs[i] is ParticleSystemRenderer)
+                                {
+                                    continue;
+                                }
+                                Material m = null;
+                                try { m = rs[i].material; }
+                                catch { m = null; }
+                                mats[i] = m;
+                            }
+                            f._mats = mats;
+                        }
+                    }
+                    catch { }
+                }
+                catch { }
+            }
+
+            private void Update()
+            {
+                try
+                {
+                    _age += Time.deltaTime;
+                    float t = _age / _life;
+                    if (t >= 1f)
+                    {
+                        try { UnityEngine.Object.Destroy(gameObject); }
+                        catch { }
+                        return;
+                    }
+                    float a = 1f - t;
+                    if (_mats != null)
+                    {
+                        for (int i = 0; i < _mats.Length; i++)
+                        {
+                            Material m = _mats[i];
+                            if (m == null)
+                            {
+                                continue;
+                            }
+                            try
+                            {
+                                if (m.HasProperty("_Color"))
+                                {
+                                    Color c = m.color;
+                                    c.a = a;
+                                    m.color = c;
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                }
+                catch { }
+            }
         }
 
         private sealed class RealShotMover : MonoBehaviour
