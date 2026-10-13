@@ -1,0 +1,42 @@
+# Manifest ingest-docs — escopo reduzido (opção 1)
+# Excluídos para quebrar os 5 ciclos de cross-ref navegacional do relatório BLOCKED:
+#   docs/README.md (ciclos AGENTS<->README), docs/graphify.md (AGENTS<->graphify),
+#   docs/anim-test-battery.md (operations<->test-battery),
+#   docs/game-assembly-audit.md (operations<->audit, audit<->entry-map).
+docs:
+  - path: docs/architecture.md
+    type: DOC
+  - path: docs/game-and-mod.md
+    type: DOC
+  - path: docs/protocol.md
+    type: SPEC
+  - path: docs/operations.md
+    type: DOC
+  - path: docs/code-map.md
+    type: DOC
+  - path: docs/game-entry-map.md
+    type: DOC
+  - path: docs/world-sync.md
+    type: SPEC
+  - path: docs/bepinex-architecture.md
+    type: DOC
+  - path: docs/native-ui-architecture.md
+    type: DOC
+  - path: docs/anim-sync-CONTEXT.md
+    type: DOC
+  - path: docs/anim-catalog.md
+    type: DOC
+  - path: docs/player-event-core-CONTEXT.md
+    type: DOC
+  - path: docs/server-rewrite-CONTEXT.md
+    type: SPEC
+  - path: docs/animation-enemies-damage-data.md
+    type: DOC
+  - path: README.md
+    type: DOC
+  - path: AGENTS.md
+    type: DOC
+  - path: scripts/README.md
+    type: DOC
+  - path: Modules/HKModules/Readme.md
+    type: DOC
