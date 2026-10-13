@@ -45,6 +45,7 @@ para outros jogos.
   nome → estado de movimentação do Ori.
 - Consulte [bateria de testes de anims](anim-test-battery.md) para validar o
   rework de sincronia (T0–T4, um bloco por mudança).
+- Consulte [animações, inimigos, dano e dados](animation-enemies-damage-data.md) para como o Ori DE em `D:` roda anims do Ori/inimigos, mecânicas de dano e save, dependências e arquivos de origem.
 - Consulte [ferramentas e scripts](../scripts/README.md) para utilitários
   de engenharia reversa, Cecil, inspeção de assemblies e diagnóstico.
 - Consulte [graphify](graphify.md) para setup do grafo de conhecimento,
